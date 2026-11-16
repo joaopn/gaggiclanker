@@ -399,7 +399,10 @@ async def test_sync_run_without_a_machine_says_so(client: httpx.AsyncClient) -> 
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "SERVICE_UNAVAILABLE"
-    assert "gaggimateHost" in response.json()["error"]["message"]
+    assert response.json()["error"]["message"] == (
+        "No machine is configured, so there is nothing to sync. "
+        "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
+    )
 
 
 async def test_sync_status_without_a_machine_is_still_an_answer(

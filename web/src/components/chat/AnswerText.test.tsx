@@ -21,7 +21,7 @@ describe("AnswerText renders markdown", () => {
   });
 
   it("renders inline code as a code element", () => {
-    const { container } = renderAnswer("Recipe `grind 12` today.");
+    const { container } = renderAnswer("Set `grind 12` today.");
     expect(container.querySelector("code")?.textContent).toBe("grind 12");
     expect(container.textContent).not.toContain("`");
   });

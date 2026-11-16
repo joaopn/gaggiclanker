@@ -700,7 +700,7 @@ describe("RecipeDetailPage, a Recipe being designed", () => {
     await user.selectOptions(screen.getByLabelText("Profile"), "50");
     await user.type(screen.getByLabelText("Dose (g)"), "18");
     await user.type(screen.getByLabelText("What are you trying?"), "the roaster's card");
-    await user.click(screen.getByRole("button", { name: "Recipe version 1" }));
+    await user.click(screen.getByRole("button", { name: "Set version 1" }));
 
     await waitFor(() => expect(addRecipeVersion).toHaveBeenCalled());
     expect(addRecipeVersion.mock.calls[0][0]).toBe(6);

@@ -832,7 +832,7 @@ function NewVersionForm({
           {add.isPending
             ? "Recording…"
             : designing
-              ? "Recipe version 1"
+              ? "Set version 1"
               : `Record it as ${major ? nextMajorLabel : nextMinorLabel}`}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>

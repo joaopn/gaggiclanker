@@ -98,7 +98,7 @@ def _require_engine(engine: SyncEngine | None) -> SyncEngine:
     if engine is None:
         raise ServiceUnavailable(
             "No machine is configured, so there is nothing to sync. "
-            "Recipe `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
+            "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
         )
     return engine
 

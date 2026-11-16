@@ -13,6 +13,10 @@ database.
 
 ## [Unreleased]
 
+### The word "Set" is a verb again in the messages that tell you to set a setting
+
+- The Recipe rename had also rewritten the verb, so some messages read "Recipe `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings". The sync refusal when no machine is configured, the three "no API key / no base URL is configured" messages of the LLM providers, the Device page's empty state and the button that records a designed Recipe's first version say "Set" again.
+
 ### Archive takes the Recipe's profile off the machine
 
 - **The database changes (an upgrade step carries it; you do nothing).** What changes: nothing in the structure. Upgrade step 14 switches off the profiles of Recipes that are already archived: every profile on the list that is switched on and whose Recipe is archived is set to "not on the machine" (its star and everything else on the row are kept). Whether your rows are carried forward: every row is, nothing is lost or removed; only that switch changes, on the rows described. What you do: nothing. The next sync with Writes on (possibly the first one after the app starts) takes those profiles off the machine through the usual content check, the selected one last. To keep one on the machine, switch it back on from the Profiles page (it asks first) or unarchive its Recipe, which switches the profile on too.

@@ -124,6 +124,6 @@ describe("DevicePage", () => {
     renderAt("/device");
 
     expect(await screen.findByText("No machine configured")).toBeInTheDocument();
-    expect(screen.getByText(/gaggimateHost/)).toBeInTheDocument();
+    expect(screen.getByText(/^Set `gaggimateHost` in Settings\./)).toBeInTheDocument();
   });
 });
