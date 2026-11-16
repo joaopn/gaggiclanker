@@ -535,7 +535,7 @@ class ProfileMatchRequest(BaseModel):
 async def post_profile_match(
     body: ProfileMatchRequest, shots: ShotsRepoDep, recipes: RecipesRepoDep
 ) -> JSONResponse:
-    """The button beside the `shotsProfileAutomatch` switch: the same rule, on demand.
+    """The Match by profile button: the rule every new shot goes through, on demand.
 
     Only ever fills a NULL, like auto-assignment, so pressing it twice or over
     a shot somebody filed by hand changes nothing it should not.

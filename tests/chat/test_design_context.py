@@ -82,7 +82,6 @@ async def _forked_design(kitchen: Fixture) -> RecipeRow:
             target_yield_g=44,
             intent="Same bag, flat burrs.",
         ),
-        automatch=False,
     )
     await recipes.add_version(
         mazzer.id,

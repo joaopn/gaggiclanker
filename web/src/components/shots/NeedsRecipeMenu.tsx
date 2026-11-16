@@ -162,11 +162,6 @@ function MenuBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
               <span className="text-muted-foreground tabular-nums">
                 {row.current_version_label}
               </span>
-              {row.automatch ? (
-                <Badge variant="secondary" className="ml-auto">
-                  automatch
-                </Badge>
-              ) : null}
             </span>
             <span className="block truncate text-muted-foreground text-xs">{identity(row)}</span>
           </button>

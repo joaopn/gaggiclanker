@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecipesPage } from "@/pages/RecipesPage";
 import { designingRecipe, recipeRow } from "@/test/recipesFixtures";
@@ -9,19 +9,16 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getRecipes, setAutomatch, getBeans, getGrinders, getMachines, getProfileVersions } =
-  vi.hoisted(() => ({
-    getRecipes: vi.fn(),
-    setAutomatch: vi.fn(),
-    getBeans: vi.fn(),
-    getGrinders: vi.fn(),
-    getMachines: vi.fn(),
-    getProfileVersions: vi.fn(),
-  }));
+const { getRecipes, getBeans, getGrinders, getMachines, getProfileVersions } = vi.hoisted(() => ({
+  getRecipes: vi.fn(),
+  getBeans: vi.fn(),
+  getGrinders: vi.fn(),
+  getMachines: vi.fn(),
+  getProfileVersions: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getRecipes,
-  setAutomatch,
   getBeans,
   getGrinders,
   getMachines,
@@ -36,13 +33,12 @@ beforeEach(() => {
       recipeRow({
         id: 4,
         name: "Kenya on the DF64",
-        automatch: false,
+        archived: true,
         shot_count: 0,
         bean_name: "Kenya",
       }),
     ],
   });
-  setAutomatch.mockResolvedValue(recipeRow({ id: 4, automatch: true }));
   getBeans.mockResolvedValue({ items: [] });
   getGrinders.mockResolvedValue({ items: [] });
   getMachines.mockResolvedValue({ items: [] });
@@ -50,7 +46,7 @@ beforeEach(() => {
 });
 
 describe("RecipesPage", () => {
-  it("cards the identity, the counts and which ones collect new shots", async () => {
+  it("cards the identity and the counts, and badges only an archived Recipe", async () => {
     renderWithQueryClient(<RecipesPage />);
 
     const cards = await screen.findAllByTestId("recipe-card");
@@ -58,25 +54,11 @@ describe("RecipesPage", () => {
     // bean · grinder · profile vN, which is what identifies a Recipe at a glance.
     expect(cards[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso v2");
     expect(cards[0]).toHaveTextContent("4 shots");
-    expect(within(cards[0]).getByTestId("recipe-automatch")).toBeInTheDocument();
-    expect(within(cards[1]).queryByTestId("recipe-automatch")).not.toBeInTheDocument();
-  });
-
-  it("turns matching on for one Recipe and off for another, touching nothing else", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<RecipesPage />);
-
-    const cards = await screen.findAllByTestId("recipe-card");
-    await user.click(within(cards[1]).getByRole("button", { name: /File matching shots here/ }));
-
-    await waitFor(() => expect(setAutomatch).toHaveBeenCalled());
-    expect(setAutomatch.mock.calls[0]).toEqual([4, true]);
-
-    // The Recipe already collecting offers the other direction, and no Recipe is
-    // switched off by another being switched on.
-    await user.click(within(cards[0]).getByRole("button", { name: /Stop filing shots here/ }));
-    await waitFor(() => expect(setAutomatch).toHaveBeenCalledTimes(2));
-    expect(setAutomatch.mock.calls[1]).toEqual([3, false]);
+    // A live Recipe files its shots: that is the normal case and carries no badge.
+    expect(cards[0]).not.toHaveTextContent("archived");
+    expect(cards[1]).toHaveTextContent("archived");
+    expect(cards[0]).not.toHaveTextContent(/automatch|filing shots|matching shots/);
+    expect(cards[1]).not.toHaveTextContent(/automatch|filing shots|matching shots/);
   });
 
   it("explains what a shot with no Recipe costs when there are none", async () => {
@@ -84,7 +66,7 @@ describe("RecipesPage", () => {
     renderWithQueryClient(<RecipesPage />);
 
     expect(await screen.findByText("No Recipes yet")).toBeInTheDocument();
-    expect(screen.getByText(/needs a Recipe/)).toBeInTheDocument();
+    expect(screen.getByText(/every shot lands in the “needs a Recipe” inbox/)).toBeInTheDocument();
   });
 
   it("opens the New Recipe dialog from the header", async () => {
@@ -119,22 +101,6 @@ describe("RecipesPage, a Recipe being designed", () => {
     expect(cards[1]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso v2");
   });
 
-  it("offers no automatch on a Recipe with no profile to match on yet", async () => {
-    // Both collect shots, as every new Recipe does; only one has a profile.
-    getRecipes.mockResolvedValue({ items: [designingRecipe({ automatch: true }), recipeRow()] });
-    renderWithQueryClient(<RecipesPage />);
-
-    const cards = await screen.findAllByTestId("recipe-card");
-    expect(within(cards[0]).queryByTestId("recipe-automatch")).not.toBeInTheDocument();
-    expect(
-      within(cards[0]).queryByRole("button", { name: /filing shots here|matching shots here/ }),
-    ).not.toBeInTheDocument();
-    expect(within(cards[1]).getByTestId("recipe-automatch")).toBeInTheDocument();
-    expect(
-      within(cards[1]).getByRole("button", { name: /Stop filing shots here/ }),
-    ).toBeInTheDocument();
-  });
-
   describe("How a Recipe works", () => {
     function explainer() {
       const section = screen.getByTestId("recipes-explainer");
@@ -159,7 +125,7 @@ describe("RecipesPage, a Recipe being designed", () => {
     });
 
     it("counts only Recipes that are not archived as something being dialled in", async () => {
-      getRecipes.mockResolvedValue({ items: [recipeRow({ archived: true, automatch: false })] });
+      getRecipes.mockResolvedValue({ items: [recipeRow({ archived: true })] });
       renderWithQueryClient(<RecipesPage />);
 
       await screen.findAllByTestId("recipe-card");

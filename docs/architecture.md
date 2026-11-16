@@ -155,14 +155,15 @@ version the Recipe is on is `recipes.current_version_id`, written by every appen
 by a revert. A minor is numbered from the current version's major, so after going
 back to v1.2 it is v1.3 (or the next free minor).
 
-A Recipe itself carries two booleans, and the comment beside them in `db/schema.sql`
-says why they are two: `archived` is the lifecycle — the bean is finished with,
-and an archived Recipe receives no shots — while `automatch` is whether the
-matcher may file a shot under this Recipe. Any number of Recipes carry it. A shot is
-filed when exactly one of them names the profile it was brewed with; none or
-several leaves it in the "needs a Recipe" inbox, because a mis-filed shot pollutes
-a trend chart nobody re-reads while an unfiled one is on a list with a button
-next to it. The inbox leaves out quarantined shots and discarded shots
+A Recipe is live or archived (`recipes.archived`): an archived Recipe (the bean
+is finished with) receives no shots, and a live one files every shot brewed on
+its profile. There is no other switch: a profile has at most one Recipe, so
+there is never a choice between live Recipes to make. A shot is filed when the
+live Recipe that has its profile names that profile version on its current
+version; otherwise it stays in the "needs a Recipe" inbox, because a mis-filed
+shot pollutes a trend chart nobody re-reads while an unfiled one is on a list
+with a button next to it. Unarchiving a Recipe files its next shots again and
+leaves the ones that arrived meanwhile in the inbox. The inbox leaves out quarantined shots and discarded shots
 (`NEEDS_RECIPE_SQL` in `db/repos/shots.py`, read by the count, the filter and the
 button alike): neither is waiting for an answer.
 

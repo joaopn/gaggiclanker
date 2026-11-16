@@ -28,11 +28,11 @@ from tests.recipes.test_profile_match import FIXTURES, _filed, _recipe_on
 from tests.sync.conftest import archive_for
 
 
-async def _pinned(wired: Fixtures, *, automatch: bool = True) -> tuple[int, int, int, int, int]:
+async def _pinned(wired: Fixtures) -> tuple[int, int, int, int, int]:
     """A Recipe on "Blooming" whose v1 is pinned and which has moved on to v1.1:
     (recipe id, v1, v1.1, the pin, the copy's profile version)."""
     original = await make_profile_version(wired.db, "Blooming")
-    recipe_id = await _recipe_on(wired, "Guji", original, automatch=automatch)
+    recipe_id = await _recipe_on(wired, "Guji", original)
     v1 = await wired.recipes.current_version(recipe_id)
     assert v1 is not None
     second = await wired.recipes.add_version(recipe_id, RecipeVersionPatch(dose_g=19.0))
@@ -93,10 +93,13 @@ class TestProfileMatch:
 
         assert match.recipe_version_id == pinned_version
 
-    async def test_with_the_recipes_flag_off_the_shot_waits_and_the_button_files_it_later(
+    async def test_while_archived_the_shot_waits_and_the_button_files_it_after_unarchive(
         self, wired: Fixtures
     ) -> None:
-        recipe_id, pinned_version, _current, _pin, copy = await _pinned(wired, automatch=False)
+        recipe_id, pinned_version, _current, _pin, copy = await _pinned(wired)
+        # Archiving unpins, but the copy still names its version: a shot brewed on it before the
+        # sync takes it off is that version's once the Recipe is live again.
+        await wired.recipes.archive(recipe_id)
         shot = await make_shot(wired.db, "000905", profile_version_id=copy)
 
         match = await wired.recipes.profile_match(
@@ -106,7 +109,7 @@ class TestProfileMatch:
         waiting = await wired.recipes.match_unfiled()
         assert waiting.model_dump() == {"matched": 0, "unmatched": 1}
 
-        await wired.recipes.set_automatch(recipe_id, True)
+        await wired.recipes.unarchive(recipe_id)
         summary = await wired.recipes.match_unfiled()
 
         assert summary.matched == 1 and await _filed(wired, shot) == pinned_version
@@ -194,7 +197,7 @@ class TestSync:
 
 
 class TestButton:
-    async def test_the_button_files_a_waiting_pinned_shot_once_the_flag_is_on(
+    async def test_the_button_files_a_waiting_pinned_shot_once_the_recipe_is_back(
         self, app: FastAPI, client: httpx.AsyncClient
     ) -> None:
         db = app.state.db
@@ -205,7 +208,6 @@ class TestButton:
             json={
                 "name": "Guji",
                 "bean_id": bean.json()["data"]["id"],
-                "automatch": False,
                 "version": {"drink": "espresso", "profile_version_id": original, "dose_g": 18.0},
             },
         )
@@ -217,12 +219,14 @@ class TestButton:
             ]["id"]
         )
         _pin, copy, _row = await make_pin(db, version_id, "Blooming v1")
+        archived = await client.post(f"/api/recipes/{recipe_id}/archive")
+        assert archived.status_code == 200, archived.text
         shot = await make_shot(db, "001100", profile_version_id=copy)
 
         waiting = await client.post("/api/shots/profile-match", json={})
         assert waiting.json()["data"] == {"matched": 0, "unmatched": 1}
-        flagged = await client.put(f"/api/recipes/{recipe_id}/automatch", json={"automatch": True})
-        assert flagged.status_code == 200, flagged.text
+        back = await client.post(f"/api/recipes/{recipe_id}/unarchive")
+        assert back.status_code == 200, back.text
         filed = await client.post("/api/shots/profile-match", json={"shot_ids": [shot]})
 
         assert filed.json()["data"] == {"matched": 1, "unmatched": 0}

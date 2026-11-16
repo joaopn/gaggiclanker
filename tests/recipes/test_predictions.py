@@ -504,7 +504,7 @@ class TestRevert:
 
         await wired.recipes.rollback(row.id, RollbackWrite(to_version_id=first.id))
 
-        # automatch: the profile the Recipe is on again is the one that matches.
+        # Matching: the profile the Recipe is on again is the one that matches.
         shot = await make_shot(wired.db, "000001", profile_version_id=profile)
         match = await wired.recipes.profile_match(
             shot, profile_version_id=profile, device_profile_id=""

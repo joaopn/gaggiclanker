@@ -1,10 +1,10 @@
-"""The matcher: a shot goes to the one Recipe offered to it that brews its profile.
+"""The matcher: a shot goes to the one live Recipe that brews its profile.
 
 This is the only path into a Recipe that nobody chose by hand, for a pull, an
 import and the button alike. The rule is "only when it is not a guess". Each
 test below pins one way it could become a guess — two Recipes on the profile, a
 Recipe that names no profile, a Recipe that has moved on to another profile — or one
-way a Recipe is not a candidate at all (archived, or `automatch` off), or one way
+way a Recipe is not a candidate at all (archived), or one way
 it could undo somebody's decision (a shot already filed).
 """
 
@@ -34,16 +34,13 @@ from tests.sync.conftest import archive_for
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 
-async def _recipe_on(
-    wired: Fixtures, name: str, profile_version_id: int | None, *, automatch: bool = True
-) -> int:
-    """A Recipe whose current version names this profile, offered to the matcher."""
+async def _recipe_on(wired: Fixtures, name: str, profile_version_id: int | None) -> int:
+    """A live Recipe whose current version names this profile."""
     if profile_version_id is not None:
         await own_version(wired.db, profile_version_id)
     row = await wired.recipes.create(
         RecipeWrite(name=name, bean_id=wired.bean_id),
         RecipeVersionWrite(drink="espresso", profile_version_id=profile_version_id, dose_g=18.0),
-        automatch=automatch,
     )
     return row.id
 
@@ -94,12 +91,13 @@ class TestProfileMatch:
         assert after.outcome == "unmatched"
         assert await _filed(wired, second) is None
 
-    async def test_a_recipe_the_matcher_is_not_offered_does_not_match(
+    async def test_an_unarchived_recipe_matches_again_and_leaves_the_waiting_shot(
         self, wired: Fixtures
     ) -> None:
-        """`automatch` off means "not mine to file"."""
+        """Back to live files the next shot; one brewed while it was archived stays in the inbox."""
         profile = await make_profile_version(wired.db, "Adaptive v2")
-        resting = await _recipe_on(wired, "Bag in the cupboard", profile, automatch=False)
+        resting = await _recipe_on(wired, "Bag in the cupboard", profile)
+        await wired.recipes.archive(resting)
         shot_id = await make_shot(wired.db, "000510", profile_version_id=profile)
 
         match = await wired.recipes.profile_match(
@@ -108,7 +106,8 @@ class TestProfileMatch:
         assert match.outcome == "unmatched"
         assert await _filed(wired, shot_id) is None
 
-        await wired.recipes.set_automatch(resting, True)
+        await wired.recipes.unarchive(resting)
+        assert await _filed(wired, shot_id) is None
         second = await make_shot(wired.db, "000511", profile_version_id=profile)
         after = await wired.recipes.profile_match(
             second, profile_version_id=profile, device_profile_id=""

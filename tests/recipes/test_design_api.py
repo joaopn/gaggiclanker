@@ -73,7 +73,7 @@ async def test_a_design_is_a_recipe_with_an_empty_version_1_and_its_conversation
     row = created["recipe"]
     assert row["name"] == "Kenya AA (Niche Zero)"
     assert row["designing"] is True
-    assert row["automatch"] is True
+    assert row["archived"] is False
     assert row["design_brief"] == {
         "fork_profile_version_id": fork,
         "usual_grind": "21",

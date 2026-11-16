@@ -205,7 +205,6 @@ export function toCreateBody(draft: Draft): RecipeCreate {
     name: draft.name.trim(),
     bean_id: Number(draft.beanId),
     grinder_id: draft.grinderId ? Number(draft.grinderId) : null,
-    automatch: true,
     version: {
       profile_version_id: draft.profileVersionId ? Number(draft.profileVersionId) : null,
       grind_setting: draft.grindSetting.trim() || null,

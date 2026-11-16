@@ -1430,18 +1430,11 @@ export async function keepGeneralInsightDeletion(
   });
 }
 
-export async function setAutomatch(id: number, automatch: boolean): Promise<RecipeRow> {
-  return fetchApi<RecipeRow>(`/recipes/${id}/automatch`, {
-    method: "PUT",
-    body: JSON.stringify({ automatch }),
-  });
-}
-
 export async function archiveRecipe(id: number): Promise<RecipeRow> {
   return fetchApi<RecipeRow>(`/recipes/${id}/archive`, { method: "POST" });
 }
 
-/** Undo an archive. Matching and pins stay off: the person turns them on again. */
+/** Undo an archive: the Recipe files its profile's new shots again. Pins stay off. */
 export async function unarchiveRecipe(id: number): Promise<RecipeRow> {
   return fetchApi<RecipeRow>(`/recipes/${id}/unarchive`, { method: "POST" });
 }

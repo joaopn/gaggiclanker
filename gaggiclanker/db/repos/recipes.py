@@ -36,11 +36,11 @@ one of them true:
   version and clears its grade can write a fresh prediction on it. That is
   accepted. The rule guards against the habit of writing a prediction down after
   the fact, not against somebody setting out to deceive themselves.
-* **a Recipe says whether shots may be filed under it** (`automatch`), and any
-  number of them may say yes: a kitchen with several grinders has several
-  coffees loaded at once, and each Recipe has a profile of its own. The Recipe whose
-  current version names the shot's profile version files it; none leaves it in
-  the inbox.
+* **a live Recipe files the shots brewed on its profile, an archived one none.**
+  A kitchen with several grinders has several coffees loaded at once, and each
+  Recipe has a profile of its own, so there is never a choice between live ones.
+  The live Recipe whose current version names the shot's profile version files it;
+  none leaves it in the inbox.
 * **a shot's Recipe is never guessed twice.** The matcher only ever writes over a
   NULL, so a correction made by hand survives every later sync pass.
 """
@@ -653,11 +653,9 @@ class RecipeRow(BaseModel):
     bean_name: str | None = None
     grinder_id: int | None = None
     grinder_name: str | None = None
-    #: Finished with — the bean is done with. An archived Recipe receives no shots.
+    #: Finished with — the bean is done with. A live Recipe files every shot brewed on its
+    #: profile; an archived one receives none.
     archived: bool = False
-    #: Whether the matcher may file a shot under this Recipe. Any number of Recipes
-    #: hold it; archiving clears it.
-    automatch: bool = False
     #: Created by the design path and waiting for its first recipe: version 1
     #: states nothing yet and its conversation is answered with the design
     #: prompt. Cleared by the first version written to the Recipe.
@@ -1248,7 +1246,6 @@ class RecipesRepository(Repository):
         spec: RecipeWrite,
         version: RecipeVersionWrite,
         *,
-        automatch: bool = True,
         from_a_draft: bool = False,
     ) -> RecipeRow:
         """Create a Recipe and its first version, atomically.
@@ -1257,17 +1254,9 @@ class RecipesRepository(Repository):
         query here joins through `recipe_versions`, and a half-created row would be
         invisible in the list and impossible to add a version to without special
         cases.
-
-        ``automatch`` defaults to true: a Recipe is created by somebody who has
-        just put that bean in a hopper, and a new Recipe that did not collect the
-        shots pulled on its profile would look broken. It takes nothing away
-        from any other Recipe — several coffees are loaded at once and the matcher
-        tells them apart by profile.
         """
         async with self.db.transaction():
-            recipe_id = await self.create_in_transaction(
-                spec, version, automatch=automatch, from_a_draft=from_a_draft
-            )
+            recipe_id = await self.create_in_transaction(spec, version, from_a_draft=from_a_draft)
         stored = await self.get(recipe_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("the Recipe vanished between write and read")
@@ -1278,7 +1267,6 @@ class RecipesRepository(Repository):
         spec: RecipeWrite,
         version: RecipeVersionWrite,
         *,
-        automatch: bool = True,
         copied_from_version_id: int | None = None,
         from_a_draft: bool = False,
     ) -> int:
@@ -1296,16 +1284,14 @@ class RecipesRepository(Repository):
         )
         cursor = await self.db.execute(
             """
-            INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch, created_at,
+            INSERT INTO recipes (name, bean_id, grinder_id, archived, created_at,
                               copied_from_version_id, board_id)
-            VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at, :copied_from,
-                    :board_id)
+            VALUES (:name, :bean_id, :grinder_id, 0, :created_at, :copied_from, :board_id)
             """,
             {
                 "name": spec.name,
                 "bean_id": spec.bean_id,
                 "grinder_id": spec.grinder_id,
-                "automatch": int(automatch),
                 "created_at": now,
                 "copied_from": copied_from_version_id,
                 "board_id": board_id,
@@ -1423,7 +1409,7 @@ class RecipesRepository(Repository):
         the Recipe's history starts with the recipe that was brewed rather than
         with an empty v1 and a v2 after it.
 
-        ``automatch`` is on, as for any new Recipe. It is harmless while version 1
+        It is live, as every new Recipe is. That is harmless while version 1
         names no profile — the matcher only files a shot under a Recipe whose
         current version names the shot's profile — and once the recipe is
         accepted and its profile pushed, the shots brewed on it land here with
@@ -1433,9 +1419,9 @@ class RecipesRepository(Repository):
         async with self.db.transaction():
             cursor = await self.db.execute(
                 """
-                INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch,
+                INSERT INTO recipes (name, bean_id, grinder_id, archived,
                                   designing, design_brief, created_at)
-                VALUES (:name, :bean_id, :grinder_id, 0, 1, 1, :design_brief, :created_at)
+                VALUES (:name, :bean_id, :grinder_id, 0, 1, :design_brief, :created_at)
                 """,
                 {
                     "name": spec.name,
@@ -1527,40 +1513,20 @@ class RecipesRepository(Repository):
         return self.to_model(RecipeRow, row)
 
     async def list_recipes(self, *, include_archived: bool = False) -> list[RecipeRow]:
-        """Every Recipe, the ones that collect shots first and the newest after."""
+        """Every Recipe, newest first, the live ones before the archived ones."""
         where: list[str] = []
         params: list[Any] = []
         if not include_archived:
             where.append("s.archived = 0")
         clause = f" WHERE {' AND '.join(where)}" if where else ""
         rows = await self.db.fetch_all(
-            f"{_RECIPE_SELECT}{clause} ORDER BY s.automatch DESC, s.created_at DESC, s.id DESC",
+            f"{_RECIPE_SELECT}{clause} ORDER BY s.archived, s.created_at DESC, s.id DESC",
             params,
         )
         return self.to_models(RecipeRow, rows)
 
-    async def set_automatch(self, recipe_id: int, wanted: bool) -> RecipeRow | None:
-        """Offer this Recipe to the matcher, or take it out of the running.
-
-        Any number of Recipes may be offered: several grinders means several
-        coffees loaded at once, and the matcher tells them apart by profile
-        rather than by which one somebody flagged last.
-
-        An **archived** Recipe cannot be offered. It receives no shots either way
-        (`version_naming_profile` filters on `archived`), so the flag on one
-        would be a badge that promises something the archive will not do. The
-        route turns the ``None`` into a 409.
-        """
-        row = await self.get(recipe_id)
-        if row is None or (wanted and row.archived):
-            return None
-        await self.db.execute(
-            "UPDATE recipes SET automatch = ? WHERE id = ?", (int(wanted), recipe_id)
-        )
-        return await self.get(recipe_id)
-
     async def archive(self, recipe_id: int) -> RecipeRow | None:
-        """Retire a Recipe. Clears `automatch` too — an archived Recipe collects no shots.
+        """Retire a Recipe: it files no more shots, and its profile's shots wait in the inbox.
 
         Its pins are unpinned in the same transaction: a copy left on the machine would brew
         shots nobody can file, so the next sync takes each one off (the pinned shots already
@@ -1568,7 +1534,7 @@ class RecipesRepository(Repository):
         """
         async with nullcontext() if self.db.in_transaction else self.db.transaction():
             cursor = await self.db.execute(
-                "UPDATE recipes SET archived = 1, automatch = 0 WHERE id = ?", (recipe_id,)
+                "UPDATE recipes SET archived = 1 WHERE id = ?", (recipe_id,)
             )
             if cursor.rowcount == 0:
                 return None
@@ -1578,9 +1544,10 @@ class RecipesRepository(Repository):
     async def unarchive(self, recipe_id: int) -> RecipeRow | None:
         """Bring a retired Recipe back: the same bag again, or archived by mistake.
 
-        Only the flag goes back. `automatch` stays off and the pins archiving took off stay
-        off: each of those puts a profile or a shot in play, so the person turns them on
-        again rather than the archive guessing they still want what they had. The profile
+        From now on it files the shots brewed on its profile again. The shots that arrived while
+        it was archived stay in the inbox: some may be another bean brewed on the old profile,
+        and the inbox is where the person sees them before Match by profile files them. The pins
+        archiving took off stay off, since each one puts a profile on the machine. The profile
         link needs no check, because a profile keeps its Recipe while the Recipe is archived
         (`idx_recipes_profile` holds archived rows too), so nothing can have taken it.
         """
@@ -2564,33 +2531,28 @@ class RecipesRepository(Repository):
         return cursor.rowcount > 0
 
     async def pinned_version(self, profile_version_id: int) -> int | None:
-        """The Recipe version a pin's copy belongs to, when its Recipe is open to automatic filing.
+        """The Recipe version a pin's copy belongs to, when its Recipe is live.
 
-        The Recipe's own "file matching shots here" governs a pin as it governs every other way a
-        shot is filed by its profile: with it off the Recipe's shots are filed by hand, and the
-        Match by profile button files the waiting ones once it is back on. An archived Recipe
-        receives none. The pin's own record may be unpinned already: the copy still names the
-        version (the file may be on the machine until the next sync removes it).
+        An archived Recipe receives no shots, through a pin as through its profile. The pin's own
+        record may be unpinned already: the copy still names the version (the file may be on the
+        machine until the next sync removes it).
         """
         found = await self.db.fetch_value(
             """
             SELECT p.recipe_version_id FROM recipe_version_pins p
             JOIN recipe_versions v ON v.id = p.recipe_version_id
             JOIN recipes s ON s.id = v.recipe_id
-            WHERE p.profile_version_id = ? AND s.automatch = 1 AND s.archived = 0
+            WHERE p.profile_version_id = ? AND s.archived = 0
             """,
             (profile_version_id,),
         )
         return None if found is None else int(found)
 
     async def version_naming_profile(self, profile_version_id: int) -> int | None:
-        """The current version of the Recipe offered to the matcher that brews this profile version.
+        """The current version of the live Recipe that brews this profile version.
 
-        Three filters, and each one is a rule stated elsewhere:
+        Two filters, and each one is a rule stated elsewhere:
 
-        * **`automatch`** is the Recipe's own answer to "file shots here". It is
-          the only thing the flag means, and a Recipe with it off is not a
-          candidate.
         * **`archived = 0`**, because a finished Recipe receives no shots.
         * only a Recipe's **current** version counts: an older one that named the
           profile describes what the Recipe used to be, and filing today's shot
@@ -2604,7 +2566,7 @@ class RecipesRepository(Repository):
             """
             SELECT v.id FROM recipe_versions v
             JOIN recipes s ON s.id = v.recipe_id
-            WHERE s.automatch = 1 AND s.archived = 0
+            WHERE s.archived = 0
               AND v.profile_version_id = ?
               AND v.id = s.current_version_id
             ORDER BY v.id
@@ -2620,7 +2582,7 @@ class RecipesRepository(Repository):
         profile_version_id: int | None,
         device_profile_id: str,
     ) -> ProfileMatch:
-        """File a shot under the Recipe offered to the matcher that brews its profile.
+        """File a shot under the live Recipe that brews its profile.
 
         The only path into a Recipe that is not a person's own decision, for every
         shot alike: one a pull brought in, one an import did, one the button

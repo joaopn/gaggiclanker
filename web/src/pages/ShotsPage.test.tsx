@@ -2954,22 +2954,19 @@ describe("ShotsPage and Recipes", () => {
 
 describe("ShotsPage needs-a-Recipe menu", () => {
   /**
-   * Five Recipes in the order `GET /api/recipes` returns them: the ones collecting
-   * shots first, then newest first. Each at a different latest version, so a menu that
+   * Five Recipes in the order `GET /api/recipes` returns them: newest first. Each at a different latest version, so a menu that
    * showed a version number it did not get from `current_version_label` shows up.
    */
   const fiveRecipes = [
     recipeRow({
       id: 5,
       name: "Guji on the Niche",
-      automatch: true,
       current_version_id: 51,
       current_version_label: "v4",
     }),
     recipeRow({
       id: 4,
       name: "Kenya AA",
-      automatch: false,
       current_version_id: 41,
       current_version_label: "v2",
       grinder_name: null,
@@ -2977,21 +2974,18 @@ describe("ShotsPage needs-a-Recipe menu", () => {
     recipeRow({
       id: 3,
       name: "Colombia decaf",
-      automatch: false,
       current_version_id: 31,
       current_version_label: "v7",
     }),
     recipeRow({
       id: 2,
       name: "House blend",
-      automatch: false,
       current_version_id: 21,
       current_version_label: "v1",
     }),
     recipeRow({
       id: 1,
       name: "The first bag",
-      automatch: false,
       current_version_id: 11,
       current_version_label: "v3",
     }),
@@ -3012,7 +3006,7 @@ describe("ShotsPage needs-a-Recipe menu", () => {
     return screen.getByRole("button", { name: /^needs a Recipe: choose one for shot 000101/ });
   }
 
-  it("opens the Recipes from the badge, three of five, collecting first, at their latest version", async () => {
+  it("opens the Recipes from the badge, three of five, newest first, at their latest version", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
     getRecipes.mockResolvedValue({ items: fiveRecipes });
@@ -3034,10 +3028,8 @@ describe("ShotsPage needs-a-Recipe menu", () => {
     expect(options.map((option) => option.getAttribute("data-recipe"))).toEqual(["5", "4", "3"]);
     expect(options[0]).toHaveTextContent("Guji on the Niche");
     expect(options[0]).toHaveTextContent("v4");
-    expect(options[0]).toHaveTextContent("automatch");
     expect(options[1]).toHaveTextContent("Kenya AA");
     expect(options[1]).toHaveTextContent("v2");
-    expect(options[1]).not.toHaveTextContent("automatch");
     expect(options[2]).toHaveTextContent("v7");
     // The one-line summary comes from the list row; nothing is fetched per Recipe.
     expect(options[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso");

@@ -64,7 +64,7 @@ async def check(
     shared = await db.fetch_all(
         "SELECT v.profile_version_id pv, COUNT(DISTINCT s.id) n FROM recipes s "
         "JOIN recipe_versions v ON v.id = s.current_version_id "
-        "WHERE v.profile_version_id IS NOT NULL AND s.archived = 0 AND s.automatch = 1 "
+        "WHERE v.profile_version_id IS NOT NULL AND s.archived = 0 "
         "GROUP BY v.profile_version_id HAVING n > 1"
     )
     if shared:

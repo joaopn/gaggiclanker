@@ -243,7 +243,6 @@ function RecipeOption({ row }: { row: RecipeRow }) {
   return (
     <option value={row.current_version_id ? String(row.current_version_id) : ""}>
       {row.name} — {row.current_version_label}
-      {row.automatch ? " (automatch)" : ""}
     </option>
   );
 }

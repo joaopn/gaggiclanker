@@ -321,8 +321,7 @@ async def _heading(
         + (f" Bean: {bean_line}." if bean_line else "")
         + (f" Grinder: {row.grinder_name}." if row.grinder_name else ""),
         f"{_plural(row.version_count, 'version')}, {_plural(row.shot_count, 'shot')}. "
-        + ("Archived." if row.archived else "In use.")
-        + (" New shots on its profile are filed here." if row.automatch else ""),
+        + ("Archived." if row.archived else "In use. New shots on its profile are filed here."),
         *[
             f'Pinned on the machine: {pin.version_label} as "{pin.name}".'
             for pin in await PinsRepository(db).live_for_recipe(row.id)

@@ -216,7 +216,6 @@ async def test_it_never_returns_a_shot_of_another_recipe(
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
         RecipeVersionWrite(drink="espresso", grind_setting="20"),
-        automatch=False,
     )
     version = await recipes.current_version(other.id)
     assert version is not None
@@ -262,7 +261,6 @@ async def test_a_version_name_is_only_ever_this_recipe_s(
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
         RecipeVersionWrite(drink="espresso", grind_setting="20"),
-        automatch=False,
     )
     second = await recipes.add_version(other.id, RecipeVersionPatch(grind_setting="19"), major=True)
     assert second is not None

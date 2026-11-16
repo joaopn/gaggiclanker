@@ -203,8 +203,8 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     # would change the first one's shot count — so copy the *Recipe* instead.
     await fixture.db.execute(
         """
-        INSERT INTO recipes (name, bean_id, grinder_id, archived, automatch, created_at)
-        SELECT name || ' (copy)', bean_id, grinder_id, archived, 0, created_at
+        INSERT INTO recipes (name, bean_id, grinder_id, archived, created_at)
+        SELECT name || ' (copy)', bean_id, grinder_id, archived, created_at
           FROM recipes WHERE id = ?
         """,
         (fixture.recipes["kenya"],),

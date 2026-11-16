@@ -358,9 +358,6 @@ describe("NewRecipeDialog", () => {
         name: "Ethiopia Guji (Niche Zero)",
         bean_id: 1,
         grinder_id: 1,
-        // A new Recipe is what the machine is set up for now, or it would collect
-        // nothing and look broken.
-        automatch: true,
         version: expect.objectContaining({
           profile_version_id: 7,
           grind_setting: "22",

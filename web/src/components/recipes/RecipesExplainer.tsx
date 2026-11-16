@@ -63,9 +63,9 @@ export function RecipesExplainer({ dialling }: { dialling: boolean }) {
         </p>
         <p>
           <strong className="text-foreground">Shots.</strong> A shot brewed with a Recipe's profile
-          is filed under that Recipe while it's set to file matching shots. Several Recipes can do
-          this at once, for example two beans on two grinders. Each Recipe has its own profile, so
-          the profile you choose on the machine tells the archive which bean was in the hopper.
+          is filed under that Recipe. Each Recipe has its own profile, so the profile you choose on
+          the machine tells the archive which bean was in the hopper. An archived Recipe files
+          nothing: its profile's shots wait under “needs a Recipe”.
         </p>
         <p>
           <strong className="text-foreground">Versions.</strong> Every change is a new version. It

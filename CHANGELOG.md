@@ -13,9 +13,12 @@ database.
 
 ## [Unreleased]
 
-### Unarchive a Recipe
+### A live Recipe always files its shots; Archive is the one off switch
 
-- An archived Recipe's page now has **Unarchive** where Archive was. The Recipe goes back to the Recipes list, with its versions, shots and conversations as they were. Matching and pins stay off: archiving switched them off, and you turn them on again (File matching shots here, Pin) if you want them. A profile keeps its Recipe while the Recipe is archived, so bringing one back never clashes with another Recipe. Nothing in the database changes.
+- **The database changes (an upgrade step carries it; you do nothing).** What changes: the `recipes` table loses its `automatch` column (the "File matching shots here" / "Stop filing shots here" switch), and the `v_recipes` view stops serving it. Whether your rows are carried forward: every one is, with every other column unchanged. The only thing lost is the switch's off state on a Recipe that is not archived, and that is what this change removes: such a Recipe now files the new shots brewed on its profile. Shots already waiting under "needs a Recipe" are left there until you press Match by profile. An archived Recipe stays archived. What you do: nothing; the app backs the database up before the upgrade, as for every step.
+- The switch was made for several Recipes sharing one profile. Since a profile has at most one Recipe there is nothing left for it to choose, so a Recipe is now simply live or archived. The `automatch` badge and the filing button are gone from the Recipes list, the Recipe page, the shots page's "needs a Recipe" menu and a shot's Recipe picker; the only state badge left is "archived". The Recipes list shows the newest first, with archived Recipes after the live ones when Show archived is on.
+- An archived Recipe's page now has **Unarchive** where Archive was. The Recipe goes back to the Recipes list, with its versions, shots and conversations as they were, and files its profile's new shots again. Shots that arrived while it was archived stay under "needs a Recipe" (some may have been another bean brewed on the old profile), and Match by profile files them. Pins stay off: archiving took them off the machine, and you pin again if you want them. A profile keeps its Recipe while the Recipe is archived, so bringing one back never clashes with another Recipe.
+- `PUT /api/recipes/{id}/automatch` is gone, and `POST /api/recipes` refuses an `automatch` field.
 
 ### A recorded outcome stays open to new shots
 

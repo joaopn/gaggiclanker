@@ -141,11 +141,6 @@ class RecipeCreate(BaseModel):
     #: bean, this grinder, we will see", and the wizard fills in the rest — so the body must
     #: carry a version, and the version a drink.
     version: RecipeVersionWrite
-    #: Whether the matcher may file shots under this Recipe. True by default: a
-    #: Recipe is created by somebody who has just put that bean in a hopper, and one
-    #: that did not collect the shots pulled on its profile would look broken.
-    #: It takes nothing away from any other Recipe.
-    automatch: bool = True
 
 
 class RecipeVersionAdd(RecipeVersionChange):
@@ -222,14 +217,6 @@ class RecipeDesignDiscarded(BaseModel):
 
     recipe_id: int
     discarded: bool = True
-
-
-class AutomatchWrite(BaseModel):
-    """`PUT /api/recipes/{id}/automatch`: whether the matcher may file shots here."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    automatch: bool
 
 
 class RecipeListData(BaseModel):
@@ -905,7 +892,6 @@ async def create_recipe(
                 grinder_id=body.grinder_id,
             ),
             body.version,
-            automatch=body.automatch,
         )
     except VersionRefused as exc:
         raise version_refused(exc) from None
@@ -1477,42 +1463,6 @@ async def rollback(
     return _unwrap(await board.revert_recipe(recipe_id, body), recipe_id, body.to_version_id)
 
 
-@router.put(
-    "/{recipe_id}/automatch",
-    response_model=ApiResponse[RecipeRow],
-    summary="Offer this Recipe to the matcher, or take it out of the running",
-)
-async def set_automatch(
-    recipe_id: int, body: AutomatchWrite, recipes: RecipesRepoDep
-) -> JSONResponse:
-    """Any number of Recipes may be offered. Nothing is taken from another Recipe.
-
-    One route both ways rather than two: this is one flag with two values, and
-    the page that reads it as a switch would otherwise have to know two paths to
-    write it.
-
-    Turning it **on** for an archived Recipe is a 409 rather than a silent no-op:
-    an archived Recipe receives no shots whatever the flag says, so the page would
-    show a badge promising something that will never happen. Turning it off is
-    allowed on any Recipe — archiving does that itself.
-    """
-    existing = await recipes.get(recipe_id)
-    if existing is None:
-        raise NotFound(f"No Recipe {recipe_id}")
-    if body.automatch and existing.archived:
-        raise Conflict(
-            f"Recipe {recipe_id} is archived",
-            details={
-                "field": "archived",
-                "message": "un-archive it before the matcher can file shots under it",
-            },
-        )
-    row = await recipes.set_automatch(recipe_id, body.automatch)
-    if row is None:  # pragma: no cover - checked above, inside the same request
-        raise NotFound(f"No Recipe {recipe_id}")
-    return envelope_response(row.model_dump(mode="json"))
-
-
 @router.post(
     "/{recipe_id}/archive", response_model=ApiResponse[RecipeRow], summary="Retire a Recipe"
 )
@@ -1529,7 +1479,7 @@ async def archive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONRespons
     summary="Bring a retired Recipe back",
 )
 async def unarchive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
-    """Undo an archive. Matching and pins stay off until the person turns them on again."""
+    """Undo an archive: the Recipe files its profile's shots again. Pins stay off."""
     row = await recipes.unarchive(recipe_id)
     if row is None:
         raise NotFound(f"No Recipe {recipe_id}")

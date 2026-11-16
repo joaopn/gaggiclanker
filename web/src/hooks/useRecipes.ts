@@ -31,7 +31,6 @@ import {
   putJudgement,
   putShotRecipeVersion,
   rollbackRecipe,
-  setAutomatch,
   setVersionOutcome,
   setVersionPrediction,
   unarchiveRecipe,
@@ -506,25 +505,6 @@ export function useRollbackRecipe(): UseMutationResult<
   });
 }
 
-export function useSetAutomatch(): UseMutationResult<
-  RecipeRow,
-  Error,
-  { id: number; automatch: boolean }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, automatch }) => setAutomatch(id, automatch),
-    onSuccess: (row) =>
-      toast.success(
-        row.automatch
-          ? `New shots on "${row.name}"'s profile are filed under it`
-          : `"${row.name}" no longer collects new shots on its own`,
-      ),
-    onError: (error) => toast.error(error.message),
-    onSettled: () => invalidateRecipes(queryClient),
-  });
-}
-
 export function useArchiveRecipe(): UseMutationResult<RecipeRow, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
@@ -541,12 +521,13 @@ export function useArchiveRecipe(): UseMutationResult<RecipeRow, Error, number> 
   });
 }
 
-/** Bring an archived Recipe back. Only the Recipe moves: pins and matching stay off. */
+/** Bring an archived Recipe back: it files its profile's new shots again. Pins stay off. */
 export function useUnarchiveRecipe(): UseMutationResult<RecipeRow, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id) => unarchiveRecipe(id),
-    onSuccess: (row) => toast.success(`"${row.name}" is back`),
+    onSuccess: (row) =>
+      toast.success(`"${row.name}" is back: new shots on its profile are filed here again`),
     onError: (error) =>
       toast.error(error instanceof ApiClientError ? error.message : noAnswerSentence("the page")),
     onSettled: () => invalidateRecipes(queryClient),

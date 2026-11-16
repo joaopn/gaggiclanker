@@ -136,7 +136,7 @@ def test_the_step_is_the_twelfth_and_expects_the_frozen_level_11_schema() -> Non
 def test_an_accepted_grade_gives_its_count_and_every_other_row_stays_empty(tmp_path: Path) -> None:
     path = level_eleven(tmp_path)
     assert (
-        upgrade_database_file(path, tmp_path, steps=STEPS, expected=LEVEL_TWELVE, now=NOW)
+        upgrade_database_file(path, tmp_path, steps=STEPS[:12], expected=LEVEL_TWELVE, now=NOW)
         is not None
     )
 
@@ -188,10 +188,7 @@ def test_the_report_says_what_was_filled_and_nothing_else_moves(tmp_path: Path) 
 
 def test_the_upgraded_database_is_the_one_a_new_database_is(tmp_path: Path) -> None:
     path = level_eleven(tmp_path)
-    assert (
-        upgrade_database_file(path, tmp_path, steps=STEPS, expected=LEVEL_TWELVE, now=NOW)
-        is not None
-    )
+    assert upgrade_database_file(path, tmp_path, steps=STEPS, now=NOW) is not None
     conn = sqlite3.connect(path)
     try:
         assert schema.schema_differences(conn) == []

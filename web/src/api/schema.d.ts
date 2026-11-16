@@ -1976,35 +1976,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/recipes/{recipe_id}/automatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Offer this Recipe to the matcher, or take it out of the running
-         * @description Any number of Recipes may be offered. Nothing is taken from another Recipe.
-         *
-         *     One route both ways rather than two: this is one flag with two values, and
-         *     the page that reads it as a switch would otherwise have to know two paths to
-         *     write it.
-         *
-         *     Turning it **on** for an archived Recipe is a 409 rather than a silent no-op:
-         *     an archived Recipe receives no shots whatever the flag says, so the page would
-         *     show a badge promising something that will never happen. Turning it off is
-         *     allowed on any Recipe — archiving does that itself.
-         */
-        put: operations["set_automatch_api_recipes__recipe_id__automatch_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/recipes/{recipe_id}/design": {
         parameters: {
             query?: never;
@@ -2356,7 +2327,7 @@ export interface paths {
         put?: never;
         /**
          * Bring a retired Recipe back
-         * @description Undo an archive. Matching and pins stay off until the person turns them on again.
+         * @description Undo an archive: the Recipe files its profile's shots again. Pins stay off.
          */
         post: operations["unarchive_recipe_api_recipes__recipe_id__unarchive_post"];
         delete?: never;
@@ -3034,7 +3005,7 @@ export interface paths {
         put?: never;
         /**
          * File shots that need a Recipe under the one Recipe that brews their profile
-         * @description The button beside the `shotsProfileAutomatch` switch: the same rule, on demand.
+         * @description The Match by profile button: the rule every new shot goes through, on demand.
          *
          *     Only ever fills a NULL, like auto-assignment, so pressing it twice or over
          *     a shot somebody filed by hand changes nothing it should not.
@@ -4369,14 +4340,6 @@ export interface components {
             authenticated: boolean;
             /** User */
             user?: string | null;
-        };
-        /**
-         * AutomatchWrite
-         * @description `PUT /api/recipes/{id}/automatch`: whether the matcher may file shots here.
-         */
-        AutomatchWrite: {
-            /** Automatch */
-            automatch: boolean;
         };
         /**
          * BackupManifest
@@ -7885,11 +7848,6 @@ export interface components {
          * @description `POST /api/recipes`: the identity and the first version, in one request.
          */
         RecipeCreate: {
-            /**
-             * Automatch
-             * @default true
-             */
-            automatch: boolean;
             /** Bean Id */
             bean_id: number;
             /** Grinder Id */
@@ -8191,11 +8149,6 @@ export interface components {
              * @default false
              */
             archived: boolean;
-            /**
-             * Automatch
-             * @default false
-             */
-            automatch: boolean;
             /** Bean Id */
             bean_id: number;
             /** Bean Name */
@@ -13950,41 +13903,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_RecipeRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_automatch_api_recipes__recipe_id__automatch_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recipe_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AutomatchWrite"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {

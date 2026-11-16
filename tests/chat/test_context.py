@@ -993,7 +993,6 @@ async def test_a_recipe_with_no_shots_says_the_spread_is_not_measured_and_names_
     empty = await RecipesRepository(experiment.db).create(
         RecipeWrite(name="Nothing pulled yet", bean_id=1),
         RecipeVersionWrite(drink="espresso", grind_setting="20"),
-        automatch=False,
     )
 
     rendered = await opening_context(experiment.db, ToolScope.for_thread(empty.id))

@@ -317,7 +317,6 @@ class DuplicateService:
                     intent=version.intent,
                     origin="manual",
                 ),
-                automatch=True,
                 copied_from_version_id=version.id,
             )
             # In the order the source Recipe lists them, whatever order the request names them in.

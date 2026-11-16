@@ -295,7 +295,6 @@ export function recipeRow(overrides: Partial<RecipeRow> = {}): RecipeRow {
     grinder_id: 1,
     grinder_name: "Niche Zero",
     archived: false,
-    automatch: true,
     designing: false,
     created_at: "2026-04-02T00:00:00.000Z",
     current_version_id: 22,

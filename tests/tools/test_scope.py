@@ -568,7 +568,6 @@ async def other_recipe_shot(archive: Fixture) -> int:
     other = await recipes.create(
         RecipeWrite(name="Another bag", bean_id=archive.bean_id),
         RecipeVersionWrite(drink="espresso", grind_setting="20"),
-        automatch=False,
     )
     version = await recipes.current_version(other.id)
     assert version is not None

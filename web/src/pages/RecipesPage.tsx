@@ -1,4 +1,4 @@
-import { Coffee, Layers, Plus } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { RecipeRow } from "@/api/types";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { useRecipes, useSetAutomatch } from "@/hooks/useRecipes";
+import { useRecipes } from "@/hooks/useRecipes";
 import { recipeSummary } from "@/lib/recipes";
 
 /**
@@ -104,8 +104,6 @@ export function RecipesPage() {
 }
 
 function RecipeCard({ row }: { row: RecipeRow }) {
-  const automatch = useSetAutomatch();
-
   return (
     // `min-w-0`: a grid item will not be narrower than its content by default, and the notes line is
     // one unbroken line of the person's own words. Without it the card, and then the page, grow to
@@ -121,12 +119,6 @@ function RecipeCard({ row }: { row: RecipeRow }) {
           <div className="flex items-center gap-1">
             <DrinkBadge drink={row.drink ?? (row.designing ? row.design_brief?.drink : null)} />
             {row.designing ? <DesigningBadge /> : null}
-            {/* Nothing to match on while designing: version 1 names no profile. */}
-            {row.automatch && !row.designing ? (
-              <Badge data-testid="recipe-automatch" className="gap-1">
-                automatch
-              </Badge>
-            ) : null}
             {row.archived ? <Badge variant="outline">archived</Badge> : null}
           </div>
         </div>
@@ -166,17 +158,6 @@ function RecipeCard({ row }: { row: RecipeRow }) {
           <Button asChild variant="outline" size="sm">
             <Link to={`/recipes/${row.id}`}>Open</Link>
           </Button>
-          {row.archived || row.designing ? null : (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={automatch.isPending}
-              onClick={() => automatch.mutate({ id: row.id, automatch: !row.automatch })}
-            >
-              <Coffee className="size-3.5" aria-hidden="true" />
-              {row.automatch ? "Stop filing shots here" : "File matching shots here"}
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>

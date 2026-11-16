@@ -49,7 +49,7 @@ async def test_a_designed_recipe_has_the_flag_the_brief_and_an_empty_version_1(
     row = await designed(wired, fork_profile_version_id=fork, usual_grind=" 22 ", goal="Body.")
 
     assert row.designing is True
-    assert row.automatch is True
+    assert row.archived is False
     assert row.design_brief == DesignBrief(
         fork_profile_version_id=fork, usual_grind="22", goal="Body."
     )

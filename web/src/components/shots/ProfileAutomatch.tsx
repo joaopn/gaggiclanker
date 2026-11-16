@@ -7,11 +7,10 @@ import { attempt } from "@/lib/mutations";
  * "Match by profile": the Recipe a shot belongs to, worked out from its profile
  * when only one Recipe can be meant.
  *
- * A shot matches when exactly one Recipe that is offered to the matcher brews its
- * profile on its current version. Two such Recipes is a guess the archive does not
- * make, and neither is a Recipe that names no profile. Every new shot already goes
- * through that rule as it arrives, so this button is for the shots that were
- * waiting before a Recipe existed, or before somebody set one to collect them: it
+ * A shot matches when the one live Recipe that has its profile names it on its
+ * current version; a Recipe that names no profile is not a match. Every new shot
+ * already goes through that rule as it arrives, so this button is for the shots
+ * that were waiting before a Recipe existed, or while it was archived: it
  * runs the rule now, over every shot waiting for a Recipe, or over one shot when
  * `shotId` is given (a shot's own page, which leaves the button out once the
  * shot has a Recipe).

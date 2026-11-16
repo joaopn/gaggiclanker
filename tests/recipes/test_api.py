@@ -440,7 +440,7 @@ class TestRecipes:
     async def test_create_get_and_version(self, client: httpx.AsyncClient, bean_id: int) -> None:
         created = await _make_recipe(client, bean_id)
         assert created["current_version_label"] == "v1"
-        assert created["automatch"] is True
+        assert created["archived"] is False and "automatch" not in created
 
         added = data(
             await client.post(
@@ -472,60 +472,61 @@ class TestRecipes:
         assert response.status_code == 422
         assert error(response)["details"]["field"] == "bean_id"
 
-    async def test_the_matcher_flag_toggles_one_recipe_and_leaves_the_others(
+    async def test_there_is_no_matching_switch_any_more(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        first = await _make_recipe(client, bean_id)
-        second = await _make_recipe(client, bean_id, name="A different bag")
-        # Both collect, which is the point: two bags, two grinders, one morning.
-        assert data(await client.get(f"/api/recipes/{first['id']}"))["recipe"]["automatch"] is True
-
-        off = data(
-            await client.put(f"/api/recipes/{first['id']}/automatch", json={"automatch": False})
+        """Live or archived is the whole lifecycle: no route and no body field set anything else."""
+        created = await _make_recipe(client, bean_id)
+        gone = await client.put(f"/api/recipes/{created['id']}/automatch", json={"automatch": True})
+        assert gone.status_code in (404, 405)
+        refused = await client.post(
+            "/api/recipes",
+            json={
+                "name": "x",
+                "bean_id": bean_id,
+                "automatch": False,
+                "version": {"drink": "espresso"},
+            },
         )
-        assert off["automatch"] is False
-        other = data(await client.get(f"/api/recipes/{second['id']}"))["recipe"]
-        assert (other["automatch"], other["archived"]) == (True, False)
-
-        on = data(
-            await client.put(f"/api/recipes/{first['id']}/automatch", json={"automatch": True})
-        )
-        assert on["automatch"] is True
+        assert refused.status_code == 400
 
     async def test_archive_hides_it_from_the_list(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         created = await _make_recipe(client, bean_id)
         archived = data(await client.post(f"/api/recipes/{created['id']}/archive"))
-        assert (archived["archived"], archived["automatch"]) == (True, False)
+        assert archived["archived"] is True
         assert data(await client.get("/api/recipes"))["items"] == []
         assert len(data(await client.get("/api/recipes?include_archived=true"))["items"]) == 1
 
-    async def test_unarchive_brings_it_back_without_matching(
+    async def test_unarchive_brings_it_back_to_the_list(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        """Back in the list, but not offered to the matcher until the person says so."""
         created = await _make_recipe(client, bean_id)
-        await client.put(f"/api/recipes/{created['id']}/automatch", json={"automatch": True})
         await client.post(f"/api/recipes/{created['id']}/archive")
         back = data(await client.post(f"/api/recipes/{created['id']}/unarchive"))
-        assert (back["archived"], back["automatch"]) == (False, False)
+        assert back["archived"] is False
         assert [row["id"] for row in data(await client.get("/api/recipes"))["items"]] == [
             created["id"]
         ]
-        on = data(
-            await client.put(f"/api/recipes/{created['id']}/automatch", json={"automatch": True})
-        )
-        assert on["automatch"] is True
+
+    async def test_the_list_is_newest_first_with_the_archived_ones_after(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        oldest = await _make_recipe(client, bean_id, name="Oldest")
+        middle = await _make_recipe(client, bean_id, name="Middle")
+        newest = await _make_recipe(client, bean_id, name="Newest")
+        await client.post(f"/api/recipes/{newest['id']}/archive")
+
+        listed = data(await client.get("/api/recipes?include_archived=true"))["items"]
+
+        assert [row["id"] for row in listed] == [middle["id"], oldest["id"], newest["id"]]
 
     async def test_routes_on_a_recipe_that_is_not_there_are_404s(
         self, client: httpx.AsyncClient
     ) -> None:
         assert (await client.get("/api/recipes/404")).status_code == 404
         assert (await client.post("/api/recipes/404/versions", json={})).status_code == 404
-        assert (
-            await client.put("/api/recipes/404/automatch", json={"automatch": True})
-        ).status_code == 404
         assert (await client.post("/api/recipes/404/archive")).status_code == 404
         assert (await client.post("/api/recipes/404/unarchive")).status_code == 404
         assert (await client.get("/api/recipes/404/trends")).status_code == 404
@@ -1294,24 +1295,6 @@ class TestRecipeReferencesAndRefusals:
         assert fine.status_code == 201
         assert none.status_code == 422
         assert error(none)["details"]["field"] == "version.profile_version_id"
-
-    async def test_offering_an_archived_recipe_to_the_matcher_is_a_conflict(
-        self, client: httpx.AsyncClient, bean_id: int
-    ) -> None:
-        old = await _make_recipe(client, bean_id, name="Last month's bag")
-        await client.post(f"/api/recipes/{old['id']}/archive")
-
-        response = await client.put(f"/api/recipes/{old['id']}/automatch", json={"automatch": True})
-
-        assert response.status_code == 409
-        assert error(response)["code"] == "CONFLICT"
-        assert error(response)["details"]["field"] == "archived"
-        assert data(await client.get(f"/api/recipes/{old['id']}"))["recipe"]["automatch"] is False
-
-        # Turning it *off* is allowed on anything: archiving does it itself, and
-        # a refusal there would be a no-op dressed up as an error.
-        off = await client.put(f"/api/recipes/{old['id']}/automatch", json={"automatch": False})
-        assert off.status_code == 200, off.text
 
     async def test_filing_a_shot_under_an_archived_recipe_is_refused(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int

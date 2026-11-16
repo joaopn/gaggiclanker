@@ -3,7 +3,6 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
-  Coffee,
   GitBranch,
   Trash2,
   Undo2,
@@ -44,7 +43,6 @@ import {
   useProfileChoices,
   useRecipe,
   useRecipeTrends,
-  useSetAutomatch,
   useUnarchiveRecipe,
 } from "@/hooks/useRecipes";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
@@ -87,7 +85,6 @@ export function RecipeDetailPage() {
   const valid = Number.isFinite(recipeId);
   const detail = useRecipe(valid ? recipeId : undefined);
   const trends = useRecipeTrends(valid ? recipeId : undefined);
-  const automatch = useSetAutomatch();
   const archive = useArchiveRecipe();
   const unarchive = useUnarchiveRecipe();
   const [versioning, setVersioning] = useState(false);
@@ -160,12 +157,6 @@ export function RecipeDetailPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {row.designing ? <DesigningBadge /> : null}
-            {/* No automatch while designing: version 1 names no profile yet, so
-                there is nothing to match a shot on, and a badge or a toggle
-                would promise filing that cannot happen. */}
-            {row.automatch && !row.designing ? (
-              <Badge data-testid="recipe-automatch">automatch</Badge>
-            ) : null}
             {row.archived ? <Badge variant="outline">archived</Badge> : null}
             {/* The conversation about the change being argued right now: the
                 ledger, the spread and the evidence are in the prompt before the
@@ -180,17 +171,6 @@ export function RecipeDetailPage() {
                 versionId={current?.id ?? null}
                 question={`How is ${row.name} going, and what should I change next?`}
               />
-            )}
-            {row.archived || row.designing ? null : (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={automatch.isPending}
-                onClick={() => automatch.mutate({ id: row.id, automatch: !row.automatch })}
-              >
-                <Coffee className="size-3.5" aria-hidden="true" />
-                {row.automatch ? "Stop filing shots here" : "File matching shots here"}
-              </Button>
             )}
             {row.archived ? (
               <Button

@@ -135,7 +135,7 @@ beforeEach(() => {
   getRecipe.mockResolvedValue(recipeDetail());
   getRecipeTrends.mockResolvedValue(trends());
   addRecipeVersion.mockResolvedValue(recipeDetail().versions[0].version);
-  archiveRecipe.mockResolvedValue({ ...recipeDetail().recipe, archived: true, automatch: false });
+  archiveRecipe.mockResolvedValue({ ...recipeDetail().recipe, archived: true });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   rollbackRecipe.mockResolvedValue(recipeDetail().versions[0].version);
@@ -880,17 +880,6 @@ describe("RecipeDetailPage, a Recipe being designed", () => {
     expect(screen.queryByText(/pulled with this Recipe's profile/)).not.toBeInTheDocument();
   });
 
-  it("offers no automatch while there is no profile to match on", async () => {
-    // The fixture Recipe collects shots, as every new Recipe does.
-    renderWithQueryClient(<RecipeDetailPage />);
-
-    await screen.findByTestId("recipe-designing");
-    expect(screen.queryByTestId("recipe-automatch")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Stop filing shots here|File matching shots here/ }),
-    ).not.toBeInTheDocument();
-  });
-
   it("shows none of it on a Recipe that is not being designed", async () => {
     recipeId = "3";
     getRecipe.mockResolvedValue(recipeDetail());
@@ -904,8 +893,10 @@ describe("RecipeDetailPage, a Recipe being designed", () => {
     expect(screen.getByTestId("discuss-in-chat")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Change something/ })).toBeInTheDocument();
     expect(screen.queryByTestId("design-brief")).not.toBeInTheDocument();
-    expect(screen.getByTestId("recipe-automatch")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Stop filing shots here/ })).toBeInTheDocument();
+    // A live Recipe files its shots with no switch to show for it.
+    expect(
+      screen.queryByRole("button", { name: /filing shots here|matching shots here/ }),
+    ).not.toBeInTheDocument();
   });
 });
 

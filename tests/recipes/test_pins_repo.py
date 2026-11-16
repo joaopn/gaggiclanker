@@ -126,7 +126,7 @@ async def test_archiving_and_unpinning_are_one_transaction(
         await wired.recipes.archive(recipe_id)
 
     row = await wired.recipes.get(recipe_id)
-    assert row is not None and row.archived is False and row.automatch is True
+    assert row is not None and row.archived is False
     pin = await PinsRepository(wired.db).get(pin_id)
     assert pin is not None and pin.unpinned_at is None
     assert (
@@ -135,19 +135,33 @@ async def test_archiving_and_unpinning_are_one_transaction(
     )
 
 
-async def test_unarchiving_puts_back_neither_the_pins_nor_the_matcher(wired: Fixtures) -> None:
-    """Archiving took both off; bringing the Recipe back leaves them off for the person."""
+async def test_unarchiving_files_new_shots_again_but_not_the_waiting_ones_nor_the_pins(
+    wired: Fixtures,
+) -> None:
+    """Back to live: the next shot on its profile is filed; the inbox and the pins are left."""
     original = await make_profile_version(wired.db, "Blooming")
-    v1, _v2 = await _a_recipe(wired, original)
+    v1, v2 = await _a_recipe(wired, original)
     pin_id, _copy, _row_id = await make_pin(wired.db, v1, "Blooming v1")
     recipe_id = (await wired.recipes.versions_by_id([v1]))[v1].recipe_id
-    before = await wired.recipes.get(recipe_id)
-    assert before is not None and before.automatch is True
     await wired.recipes.archive(recipe_id)
+    waiting = await make_shot(wired.db, "000701", profile_version_id=original)
+    archived = await wired.recipes.profile_match(
+        waiting, profile_version_id=original, device_profile_id=""
+    )
+    assert archived.outcome == "unmatched"
 
     row = await wired.recipes.unarchive(recipe_id)
 
-    assert row is not None and (row.archived, row.automatch) == (False, False)
+    assert row is not None and row.archived is False
+    assert (
+        await wired.db.fetch_value("SELECT recipe_version_id FROM shots WHERE id = ?", (waiting,))
+        is None
+    )
+    fresh = await make_shot(wired.db, "000702", profile_version_id=original)
+    match = await wired.recipes.profile_match(
+        fresh, profile_version_id=original, device_profile_id=""
+    )
+    assert (match.outcome, match.recipe_version_id) == ("matched", v2)
     pin = await PinsRepository(wired.db).get(pin_id)
     assert pin is not None and pin.unpinned_at is not None
     assert await PinsRepository(wired.db).live_for_recipe(recipe_id) == []

@@ -100,12 +100,9 @@ class TestGrinders:
 
 
 class TestRecipes:
-    async def test_create_makes_version_one_and_offers_it_to_the_matcher(
-        self, wired: Fixtures
-    ) -> None:
+    async def test_create_makes_version_one_on_a_live_recipe(self, wired: Fixtures) -> None:
         row = await _new_recipe(wired, dose_g=18.0, target_yield_g=36.0, grind_setting="22")
         assert row.current_version_label == "v1"
-        assert row.automatch is True
         assert row.archived is False
         assert row.bean_name == "Ethiopia Guji"
 
@@ -255,29 +252,10 @@ class TestRecipes:
         assert [v.version_label for v in await wired.recipes.versions(first.id)] == ["v1.1", "v1"]
         assert [v.version_label for v in await wired.recipes.versions(second.id)] == ["v1.1", "v1"]
 
-    async def test_any_number_of_recipes_collect_shots(self, wired: Fixtures) -> None:
-        """Several grinders, several bags loaded, and no flag to fight over."""
-        first = await _new_recipe(wired, name="Bag one")
-        second = await _new_recipe(wired, name="Bag two")
-        assert (await wired.recipes.get(first.id)).automatch is True  # type: ignore[union-attr]
-        assert (await wired.recipes.get(second.id)).automatch is True  # type: ignore[union-attr]
-
-        out = await wired.recipes.set_automatch(first.id, False)
-        assert out is not None and out.automatch is False
-        # Taking one out of the running leaves the other exactly as it was.
-        other = await wired.recipes.get(second.id)
-        assert other is not None
-        assert (other.automatch, other.archived) == (True, False)
-
-        back = await wired.recipes.set_automatch(first.id, True)
-        assert back is not None and back.automatch is True
-        assert (await wired.recipes.get(second.id)).automatch is True  # type: ignore[union-attr]
-
-    async def test_archiving_clears_automatch(self, wired: Fixtures) -> None:
+    async def test_archiving_hides_it_from_the_list(self, wired: Fixtures) -> None:
         row = await _new_recipe(wired)
         archived = await wired.recipes.archive(row.id)
-        assert archived is not None
-        assert (archived.archived, archived.automatch) == (True, False)
+        assert archived is not None and archived.archived is True
         assert await wired.recipes.list_recipes() == []
         assert len(await wired.recipes.list_recipes(include_archived=True)) == 1
 
@@ -404,24 +382,7 @@ class TestConcurrency:
         assert row.current_version_label == "v1"
 
 
-class TestAutomatchRefusals:
-    async def test_an_archived_recipe_cannot_be_offered_to_the_matcher(
-        self, wired: Fixtures
-    ) -> None:
-        """The flag would promise something the matcher will never do.
-
-        `version_naming_profile` filters on `archived` as well, so a shot
-        would never be filed there whatever the flag said.
-        """
-        live = await _new_recipe(wired, name="The live one")
-        old = await _new_recipe(wired, name="Last month's bag")
-        await wired.recipes.archive(old.id)
-
-        assert await wired.recipes.set_automatch(old.id, True) is None
-
-        assert (await wired.recipes.get(old.id)).automatch is False  # type: ignore[union-attr]
-        assert (await wired.recipes.get(live.id)).automatch is True  # type: ignore[union-attr]
-
+class TestArchivedRefusals:
     async def test_a_shot_cannot_be_filed_under_an_archived_recipe(self, wired: Fixtures) -> None:
         row = await _new_recipe(wired)
         version = (await wired.recipes.versions(row.id))[0]

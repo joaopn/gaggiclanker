@@ -93,7 +93,6 @@ async def test_a_named_version_has_to_belong_to_the_recipe(archive: Fixture) -> 
     recipes = RecipesRepository(archive.db)
     other = await recipes.create(
         *_other_recipe(archive),
-        automatch=False,
     )
     other_version = await recipes.current_version(other.id)
     assert other_version is not None

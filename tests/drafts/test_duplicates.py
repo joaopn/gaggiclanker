@@ -267,7 +267,7 @@ async def test_a_duplicate_is_a_new_recipe_on_a_new_profile_with_a_note_and_no_h
     body = data(response)
     assert set(body) == {"recipe", "board_id"}
     made = body["recipe"]
-    assert (made["name"], made["automatch"], made["archived"]) == ("Guji milk", True, False)
+    assert (made["name"], made["archived"]) == ("Guji milk", False)
     assert made["id"] != recipe_id and made["version_count"] == 1 and made["shot_count"] == 0
     assert made["copied_from"] == {
         "recipe_id": recipe_id,
@@ -506,7 +506,7 @@ async def test_an_archived_source_may_be_duplicated(adopted: Adopted) -> None:
 
     made = data(await _duplicate(client, recipe_id, version_id))["recipe"]
 
-    assert made["archived"] is False and made["automatch"] is True
+    assert made["archived"] is False
     assert made["copied_from"]["recipe_id"] == recipe_id
 
 

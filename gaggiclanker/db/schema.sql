@@ -215,13 +215,10 @@ CREATE TABLE recipes (
     name       TEXT    NOT NULL,
     bean_id    INTEGER NOT NULL REFERENCES beans(id),
     grinder_id INTEGER REFERENCES grinders(id),
-    -- Two flags, because they mean two things. `automatch`: shots brewed on this Recipe's profile are
-    -- filed here (any number of Recipes may say yes: a kitchen with several grinders has several
-    -- coffees loaded at once, and each Recipe has a profile of its own, so "the current Recipe" has no
-    -- answer). `archived`: the lifecycle, the bag is finished with and the Recipe receives no shots.
-    -- Neither is "active".
-    automatch     INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- The lifecycle: a live Recipe files every shot brewed on its profile, an archived one (the bag
+    -- is finished with) files none and leaves them under "needs a Recipe". A profile has at most one
+    -- Recipe, so there is never a choice to make between live ones.
     archived INTEGER NOT NULL DEFAULT 0,
     designing INTEGER NOT NULL DEFAULT 0,
     design_brief TEXT NOT NULL DEFAULT '{}',
@@ -1187,7 +1184,6 @@ CREATE VIEW v_recipes AS
 SELECT st.id AS recipe_id,
        st.name,
        st.archived,
-       st.automatch,
        st.bean_id,
        b.name AS bean_name,
        b.roaster,
@@ -1423,4 +1419,4 @@ INSERT INTO sqlite_sequence (name, seq) VALUES
 -- database at another level as a different one, even when its structure is the same. It is the
 -- number of upgrade steps in `gaggiclanker/db/upgrades`: a database below it is carried forward
 -- by those steps at the app's start.
-PRAGMA user_version = 12;
+PRAGMA user_version = 13;

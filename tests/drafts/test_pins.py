@@ -509,7 +509,7 @@ async def test_archiving_a_recipe_unpins_every_pin_in_one_step_and_the_sync_take
 
     archived = data(await client.post(f"/api/recipes/{recipe_id}/archive"))
 
-    assert archived["archived"] is True and archived["automatch"] is False
+    assert archived["archived"] is True
     assert int(await app.state.db.fetch_value("SELECT COUNT(*) FROM recipe_version_pins")) == 2
     assert (
         int(
