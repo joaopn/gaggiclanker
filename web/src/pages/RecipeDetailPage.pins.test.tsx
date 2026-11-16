@@ -34,6 +34,7 @@ const {
   getRecipe,
   getRecipeTrends,
   archiveRecipe,
+  unarchiveRecipe,
   getVocabulary,
   getKnowledgeInsights,
   getProfileVersions,
@@ -47,6 +48,7 @@ const {
   getRecipe: vi.fn(),
   getRecipeTrends: vi.fn(),
   archiveRecipe: vi.fn(),
+  unarchiveRecipe: vi.fn(),
   getVocabulary: vi.fn(),
   getKnowledgeInsights: vi.fn(),
   getProfileVersions: vi.fn(),
@@ -62,6 +64,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getRecipe,
   getRecipeTrends,
   archiveRecipe,
+  unarchiveRecipe,
   getVocabulary,
   getKnowledgeInsights,
   getProfileVersions,
@@ -127,6 +130,7 @@ beforeEach(() => {
   pinVersion.mockResolvedValue({ pin: pinDetail({ version_label: "v1.1" }), board_id: 8 });
   unpinPin.mockResolvedValue({ pin: pinDetail(), board_id: 7 });
   archiveRecipe.mockResolvedValue(recipeRow({ archived: true }));
+  unarchiveRecipe.mockResolvedValue(recipeRow({ archived: false }));
 });
 
 describe("the timeline's pins", () => {
@@ -716,6 +720,28 @@ describe("Unpin on the card", () => {
 });
 
 describe("Archive", () => {
+  it("offers Unarchive instead of Archive on an archived Recipe, and sends it once", async () => {
+    getRecipe.mockResolvedValue(pinnedDetail({ pins: [], recipe: recipeRow({ archived: true }) }));
+    const user = setupUser();
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    const button = await screen.findByRole("button", { name: "Unarchive" });
+    expect(screen.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await user.dblClick(button);
+
+    await waitFor(() => expect(unarchiveRecipe).toHaveBeenCalledWith(3));
+    expect(unarchiveRecipe).toHaveBeenCalledTimes(1);
+    expect(archiveRecipe).not.toHaveBeenCalled();
+  });
+
+  it("offers no Unarchive on a Recipe that is not archived", async () => {
+    getRecipe.mockResolvedValue(pinnedDetail({ pins: [] }));
+    renderWithQueryClient(<RecipeDetailPage />);
+
+    await screen.findByRole("button", { name: "Archive" });
+    expect(screen.queryByRole("button", { name: "Unarchive" })).not.toBeInTheDocument();
+  });
+
   it("archives at once, as before, when the Recipe has no pins", async () => {
     getRecipe.mockResolvedValue(pinnedDetail({ pins: [] }));
     const user = setupUser();

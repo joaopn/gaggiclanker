@@ -501,6 +501,23 @@ class TestRecipes:
         assert data(await client.get("/api/recipes"))["items"] == []
         assert len(data(await client.get("/api/recipes?include_archived=true"))["items"]) == 1
 
+    async def test_unarchive_brings_it_back_without_matching(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        """Back in the list, but not offered to the matcher until the person says so."""
+        created = await _make_recipe(client, bean_id)
+        await client.put(f"/api/recipes/{created['id']}/automatch", json={"automatch": True})
+        await client.post(f"/api/recipes/{created['id']}/archive")
+        back = data(await client.post(f"/api/recipes/{created['id']}/unarchive"))
+        assert (back["archived"], back["automatch"]) == (False, False)
+        assert [row["id"] for row in data(await client.get("/api/recipes"))["items"]] == [
+            created["id"]
+        ]
+        on = data(
+            await client.put(f"/api/recipes/{created['id']}/automatch", json={"automatch": True})
+        )
+        assert on["automatch"] is True
+
     async def test_routes_on_a_recipe_that_is_not_there_are_404s(
         self, client: httpx.AsyncClient
     ) -> None:
@@ -510,6 +527,7 @@ class TestRecipes:
             await client.put("/api/recipes/404/automatch", json={"automatch": True})
         ).status_code == 404
         assert (await client.post("/api/recipes/404/archive")).status_code == 404
+        assert (await client.post("/api/recipes/404/unarchive")).status_code == 404
         assert (await client.get("/api/recipes/404/trends")).status_code == 404
 
 

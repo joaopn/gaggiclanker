@@ -1441,6 +1441,11 @@ export async function archiveRecipe(id: number): Promise<RecipeRow> {
   return fetchApi<RecipeRow>(`/recipes/${id}/archive`, { method: "POST" });
 }
 
+/** Undo an archive. Matching and pins stay off: the person turns them on again. */
+export async function unarchiveRecipe(id: number): Promise<RecipeRow> {
+  return fetchApi<RecipeRow>(`/recipes/${id}/unarchive`, { method: "POST" });
+}
+
 export async function getRecipeTrends(id: number): Promise<RecipeTrends> {
   return fetchApi<RecipeTrends>(`/recipes/${id}/trends`);
 }

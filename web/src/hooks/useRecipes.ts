@@ -34,6 +34,7 @@ import {
   setAutomatch,
   setVersionOutcome,
   setVersionPrediction,
+  unarchiveRecipe,
 } from "@/api/client";
 import type {
   JudgementWrite,
@@ -537,6 +538,18 @@ export function useArchiveRecipe(): UseMutationResult<RecipeRow, Error, number> 
       Promise.all([invalidateRecipes(queryClient), invalidateBoardWrites(queryClient)]).then(
         () => undefined,
       ),
+  });
+}
+
+/** Bring an archived Recipe back. Only the Recipe moves: pins and matching stay off. */
+export function useUnarchiveRecipe(): UseMutationResult<RecipeRow, Error, number> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => unarchiveRecipe(id),
+    onSuccess: (row) => toast.success(`"${row.name}" is back`),
+    onError: (error) =>
+      toast.error(error instanceof ApiClientError ? error.message : noAnswerSentence("the page")),
+    onSettled: () => invalidateRecipes(queryClient),
   });
 }
 

@@ -1,4 +1,13 @@
-import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch, Trash2, Undo2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  Coffee,
+  GitBranch,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { useId, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
@@ -36,6 +45,7 @@ import {
   useRecipe,
   useRecipeTrends,
   useSetAutomatch,
+  useUnarchiveRecipe,
 } from "@/hooks/useRecipes";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { attempt } from "@/lib/mutations";
@@ -79,6 +89,7 @@ export function RecipeDetailPage() {
   const trends = useRecipeTrends(valid ? recipeId : undefined);
   const automatch = useSetAutomatch();
   const archive = useArchiveRecipe();
+  const unarchive = useUnarchiveRecipe();
   const [versioning, setVersioning] = useState(false);
   // Which Recipe the question is about: the page keeps its state across `/recipes/:recipeId`, so a bare flag
   // would carry an open question over to the next Recipe.
@@ -181,7 +192,19 @@ export function RecipeDetailPage() {
                 {row.automatch ? "Stop filing shots here" : "File matching shots here"}
               </Button>
             )}
-            {row.archived ? null : (
+            {row.archived ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={unarchive.isPending}
+                onClick={() =>
+                  archiveOnce((release) => unarchive.mutate(row.id, { onSettled: release }))
+                }
+              >
+                <ArchiveRestore className="size-3.5" aria-hidden="true" />
+                Unarchive
+              </Button>
+            ) : (
               <Button
                 variant="ghost"
                 size="sm"

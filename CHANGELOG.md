@@ -13,6 +13,10 @@ database.
 
 ## [Unreleased]
 
+### Unarchive a Recipe
+
+- An archived Recipe's page now has **Unarchive** where Archive was. The Recipe goes back to the Recipes list, with its versions, shots and conversations as they were. Matching and pins stay off: archiving switched them off, and you turn them on again (File matching shots here, Pin) if you want them. A profile keeps its Recipe while the Recipe is archived, so bringing one back never clashes with another Recipe. Nothing in the database changes.
+
 ### A recorded outcome stays open to new shots
 
 - **The database changes (an upgrade step carries it; you do nothing).** What changes: `recipe_versions` gains one trailing column, `outcome_counted_shots`, the number of counted shots (rated, not discarded) a version's recorded outcome was recorded on. Whether your rows are carried forward: every one is, unchanged. The new column is filled for a version whose outcome you accepted from the agent's card (the count the card was written on, taken from the newest accepted card that still says what the version says and was accepted at the moment the outcome was written) and stays empty for every other outcome, an outcome you typed by hand included, because nothing recorded how many shots it rested on; an empty count is true for them (it reads "not known") and nothing is lost. What you do: nothing; the app backs the database up before the upgrade, as for every step.

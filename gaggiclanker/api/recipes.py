@@ -1523,6 +1523,19 @@ async def archive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONRespons
     return envelope_response(row.model_dump(mode="json"))
 
 
+@router.post(
+    "/{recipe_id}/unarchive",
+    response_model=ApiResponse[RecipeRow],
+    summary="Bring a retired Recipe back",
+)
+async def unarchive_recipe(recipe_id: int, recipes: RecipesRepoDep) -> JSONResponse:
+    """Undo an archive. Matching and pins stay off until the person turns them on again."""
+    row = await recipes.unarchive(recipe_id)
+    if row is None:
+        raise NotFound(f"No Recipe {recipe_id}")
+    return envelope_response(row.model_dump(mode="json"))
+
+
 @router.get(
     "/{recipe_id}/trends",
     response_model=ApiResponse[RecipeTrends],

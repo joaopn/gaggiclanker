@@ -133,3 +133,22 @@ async def test_archiving_and_unpinning_are_one_transaction(
         await wired.db.fetch_value("SELECT deleted_at FROM profile_board WHERE id = ?", (row_id,))
         is None
     )
+
+
+async def test_unarchiving_puts_back_neither_the_pins_nor_the_matcher(wired: Fixtures) -> None:
+    """Archiving took both off; bringing the Recipe back leaves them off for the person."""
+    original = await make_profile_version(wired.db, "Blooming")
+    v1, _v2 = await _a_recipe(wired, original)
+    pin_id, _copy, _row_id = await make_pin(wired.db, v1, "Blooming v1")
+    recipe_id = (await wired.recipes.versions_by_id([v1]))[v1].recipe_id
+    before = await wired.recipes.get(recipe_id)
+    assert before is not None and before.automatch is True
+    await wired.recipes.archive(recipe_id)
+
+    row = await wired.recipes.unarchive(recipe_id)
+
+    assert row is not None and (row.archived, row.automatch) == (False, False)
+    pin = await PinsRepository(wired.db).get(pin_id)
+    assert pin is not None and pin.unpinned_at is not None
+    assert await PinsRepository(wired.db).live_for_recipe(recipe_id) == []
+    assert await wired.recipes.unarchive(9999) is None

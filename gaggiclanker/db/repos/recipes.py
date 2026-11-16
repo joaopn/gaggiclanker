@@ -1575,6 +1575,20 @@ class RecipesRepository(Repository):
             await PinsRepository(self.db).unpin_recipe(recipe_id)
         return await self.get(recipe_id)
 
+    async def unarchive(self, recipe_id: int) -> RecipeRow | None:
+        """Bring a retired Recipe back: the same bag again, or archived by mistake.
+
+        Only the flag goes back. `automatch` stays off and the pins archiving took off stay
+        off: each of those puts a profile or a shot in play, so the person turns them on
+        again rather than the archive guessing they still want what they had. The profile
+        link needs no check, because a profile keeps its Recipe while the Recipe is archived
+        (`idx_recipes_profile` holds archived rows too), so nothing can have taken it.
+        """
+        cursor = await self.db.execute("UPDATE recipes SET archived = 0 WHERE id = ?", (recipe_id,))
+        if cursor.rowcount == 0:
+            return None
+        return await self.get(recipe_id)
+
     # ── versions ─────────────────────────────────────────────────────
 
     async def add_version(
