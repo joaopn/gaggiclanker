@@ -105,7 +105,9 @@ class TransformedSample(TypedDict):
     temperature_c: float
     pressure_bar: float
     flow_ml_s: float
-    weight_g: float
+    #: Absent when no sample of the window recorded a weight (a scale lost mid-shot): a point
+    #: with no weight is not a point at 0 g.
+    weight_g: NotRequired[float]
 
 
 class PhaseDiagnostics(TypedDict, total=False):
@@ -297,10 +299,13 @@ def as_sample_dicts(slog: Slog) -> list[SampleDict]:
     """Flatten a parsed shot's samples to the dicts the engine works on.
 
     A field the firmware did not record is left *out* of the dict rather than
-    defaulted, because several metrics branch on whether it was recorded.
+    defaulted, because several metrics branch on whether it was recorded. The weights are
+    the ones a scale gave (:meth:`Slog.recorded_samples`): a firmware 1.10 shot's estimate
+    reads as absent (never a zero), so a shot with no scale has no weights and "has a scale"
+    stays one rule.
     """
     out: list[SampleDict] = []
-    for sample in slog.samples:
+    for sample in slog.recorded_samples():
         row: SampleDict = {}
         for name in SAMPLE_FIELDS:
             value = getattr(sample, name)
@@ -649,9 +654,9 @@ def largest_pressure_drop(
 def brew_has_scale(samples: list[SampleDict], transitions: list[PhaseTransition]) -> bool:
     """Whether the shot had a scale: any brew-phase weight above zero.
 
-    The firmware writes ``v`` and ``vf`` as zeros, never nulls, when no scale is
-    connected, so the weights themselves are the evidence. Every cup-flow number
-    is gated on this one rule.
+    Up to version 7 the firmware writes ``v`` and ``vf`` as zeros, never nulls, when no scale is
+    connected, so the weights themselves are the evidence; a version 8 shot has no weight (the
+    key is absent) where no scale answered. Every cup-flow number is gated on this one rule.
     """
     return shot_has_scale(
         samples[i].get("v", 0.0) for i in _brew_phase_positions(samples, transitions)
@@ -787,10 +792,13 @@ def compute_shot_diagnostics(
     if has_scale:
         weight_rates = [
             rate
-            for i in range(1, len(brew_weights))
+            for i in range(1, len(brew_samples))
+            # A step needs a reading at both ends: a sample with no weight (a scale lost mid-shot)
+            # is no reading, and a step to or from it is not a step to or from zero.
+            if "v" in brew_samples[i] and "v" in brew_samples[i - 1]
             # Only accumulating weight: a negative step is the scale settling
             # or the cup being nudged, not coffee leaving the puck.
-            if (rate := (brew_weights[i] - brew_weights[i - 1]) / dt) >= 0
+            if (rate := (brew_samples[i]["v"] - brew_samples[i - 1]["v"]) / dt) >= 0
         ]
         if weight_rates:
             w_rate_avg = _round2(_safe_mean(weight_rates))
@@ -1259,15 +1267,17 @@ def _select_samples(samples: list[SampleDict]) -> list[TransformedSample]:
             continue
         window = samples[max(0, idx - 1) : min(len(samples), idx + 2)]
         wn = len(window)
-        result.append(
-            TransformedSample(
-                time_seconds=_round1(samples[idx].get("t", 0.0) / 1000.0),
-                temperature_c=_round1(sum(s.get("ct", 0.0) for s in window) / wn),
-                pressure_bar=_round1(sum(s.get("cp", 0.0) for s in window) / wn),
-                flow_ml_s=_round1(sum(s.get("pf", 0.0) for s in window) / wn),
-                weight_g=_round1(sum(s.get("v", 0.0) for s in window) / wn),
-            )
+        point = TransformedSample(
+            time_seconds=_round1(samples[idx].get("t", 0.0) / 1000.0),
+            temperature_c=_round1(sum(s.get("ct", 0.0) for s in window) / wn),
+            pressure_bar=_round1(sum(s.get("cp", 0.0) for s in window) / wn),
+            flow_ml_s=_round1(sum(s.get("pf", 0.0) for s in window) / wn),
         )
+        # The weights that were recorded around the point; none, and the point has no weight.
+        weights = [s["v"] for s in window if "v" in s]
+        if weights:
+            point["weight_g"] = _round1(sum(weights) / len(weights))
+        result.append(point)
     return result
 
 

@@ -38,8 +38,9 @@ def cup_flow(sample: Mapping[str, float]) -> float | None:
 def shot_has_scale(weights: Iterable[float | None]) -> bool:
     """Whether a shot had a scale: any brew-phase weight above zero.
 
-    A board without a scale logs ``v`` and ``vf`` as zeros, never as nulls, so the
-    flag has to be read from the weights themselves.
+    A board without a scale logs ``v`` and ``vf`` as zeros, so up to version 7 the flag has to be
+    read from the weights themselves. A version 8 shot records a weight only where a scale
+    answered and has none (``None``) elsewhere, which reads as no weight.
     """
     return any((weight or 0.0) > 0 for weight in weights)
 
@@ -53,8 +54,12 @@ def mean_cup_flow(samples: Iterable[Mapping[str, float]]) -> float | None:
 def cup_first_drip_index(samples: Sequence[Mapping[str, float]]) -> int | None:
     """The first sample whose weight is at least the first reading plus half a gram.
 
-    That is when coffee first reached the cup. The caller decides whether the shot
-    had a scale; without weights, or when the weight never rose that far, ``None``.
+    That is when coffee first reached the cup. The caller decides whether the shot had a scale;
+    without weights, or when the weight never rose that far, ``None``. So is it when the first
+    recorded weight is no baseline: a reading that is not the first sample's and is already at or
+    above :data:`FIRST_DRIP_RISE_G` says the scale came up (only firmware 1.10 can log a shot that
+    way) after coffee was in the cup, and a drip counted from it would be wrong, not just late.
+    A first reading under that (the cup still empty) is a baseline whenever the scale answered.
     """
     first: float | None = None
     for index, sample in enumerate(samples):
@@ -62,6 +67,8 @@ def cup_first_drip_index(samples: Sequence[Mapping[str, float]]) -> int | None:
         if weight is None:
             continue
         if first is None:
+            if index > 0 and weight >= FIRST_DRIP_RISE_G:
+                return None
             first = float(weight)
         if weight >= first + FIRST_DRIP_RISE_G:
             return index

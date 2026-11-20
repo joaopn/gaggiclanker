@@ -39,6 +39,11 @@ import struct
 from dataclasses import dataclass, field
 
 from gaggiclanker.domain.models import PhaseTransition, Sample, SlogHeader
+from gaggiclanker.domain.scale_weights import (
+    HeaderWeight,
+    header_weight,
+    recorded_samples,
+)
 
 MAGIC = 0x544F4853  # 'SHOT', little-endian
 HEADER_SIZE_V4 = 128
@@ -169,6 +174,19 @@ class Slog:
             return self.header.duration_ms
         return last_t or 0
 
+    def recorded_samples(self) -> list[Sample]:
+        """The samples with the weights that are a scale's reading (see :mod:`scale_weights`).
+
+        What the app stores and analyses, so a version 8 shot's estimate is not read as a
+        weight. ``samples`` stays what the machine wrote, and so does the encoder's input.
+        """
+        return recorded_samples(self.version, self.samples)
+
+    @property
+    def header_weight(self) -> HeaderWeight:
+        """Whether the header's final weight is a scale's, and what of the index volume to keep."""
+        return header_weight(self.version, self.samples, self.header.final_weight_g)
+
     @property
     def volume_g(self) -> float | None:
         """Final beverage weight: the header's, else the last real scale reading.
@@ -183,16 +201,25 @@ class Slog:
         :func:`weight_before_dropout` for how narrowly it is matched. A header
         under :data:`DROPOUT_MIN_WEIGHT_G` is that empty scale too, so it gives
         way to the drop when the samples show one.
+
+        Version 8 writes the active weight into the header (the highest spike-filtered
+        one), which with no scale, or after a scale lost before the end, is the flow estimate
+        (see :func:`~gaggiclanker.domain.scale_weights.header_weight`): then the shot has no
+        final weight at all, not the last real reading, which would pass for the yield while
+        understating it.
         """
+        if not self.header_weight.counts:
+            return None
+        samples = self.recorded_samples()
         header = self.header.final_weight_g
         if header and header >= DROPOUT_MIN_WEIGHT_G:
             return header
-        dropped = weight_before_dropout(self.samples, self.sample_interval)
+        dropped = weight_before_dropout(samples, self.sample_interval)
         if dropped is not None:
             return dropped
         if header:
             return header
-        last = self.samples[-1].v if self.samples else None
+        last = samples[-1].v if samples else None
         return last or None
 
     @property

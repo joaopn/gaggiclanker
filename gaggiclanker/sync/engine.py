@@ -71,6 +71,8 @@ from gaggiclanker.device.events import (
 )
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry, LiveStatus
+from gaggiclanker.domain.scale_weights import HeaderWeight, weights_follow_active_scale
+from gaggiclanker.domain.slog import SlogError, parse_slog
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.signatures.service import SignatureService
@@ -278,6 +280,9 @@ class SyncEngine:
         #: A shot was announced since the last pass the write phase asked for (see
         #: :meth:`_pull_shots_before_saving`), and whether the last shot pass read an index.
         self._announced_since_pull = False
+        #: What each version 8 shot's header weight is, read once from its bytes (immutable), so
+        #: an index pass does not parse a shot again for every pass it stays unchanged.
+        self._header_weights: dict[int, HeaderWeight | None] = {}
         self._index_served = False
         #: The last capability flags seen on a status frame, and the selected
         #: profile id. `None` means "we have not seen a state frame", which is a
@@ -1067,9 +1072,10 @@ class SyncEngine:
             )
         for device_id, state in pairing.paired.items():
             entry = entries[device_id]
+            volume_g = await self._index_volume(state, entry)
             if (
                 state.index_rating == entry.rating
-                and state.index_volume_g == entry.volume_g
+                and state.index_volume_g == volume_g
                 and state.index_flags == entry.flags
                 and state.deleted_on_device == entry.deleted
             ):
@@ -1077,7 +1083,7 @@ class SyncEngine:
             await self.shots.update_index_fields(
                 state.id,
                 rating=entry.rating,
-                volume_g=entry.volume_g,
+                volume_g=volume_g,
                 avg_temp_c=entry.avg_temp_c,
                 max_pressure_bar=entry.max_pressure_bar,
                 avg_flow_ml_s=entry.avg_flow_ml_s,
@@ -1093,7 +1099,7 @@ class SyncEngine:
                 message="the device's index entry changed",
                 data={
                     "rating": entry.rating,
-                    "volume_g": entry.volume_g,
+                    "volume_g": volume_g,
                     "deleted_on_device": entry.deleted,
                 },
             )
@@ -1105,6 +1111,26 @@ class SyncEngine:
                     "deleted_on_device": entry.deleted,
                 },
             )
+
+    async def _index_volume(self, state: ShotState, entry: IndexEntry) -> float | None:
+        """The index entry's volume as the archive keeps it for this shot.
+
+        The machine copies a version 8 shot's header weight into its index, and that weight is
+        the flow estimate when no scale answered (:meth:`HeaderWeight.index_volume`), so the
+        shot's own bytes are read to tell it from a dose out someone typed. Older shots and
+        shots with no volume are taken as the index has them.
+        """
+        if entry.volume_g is None or not weights_follow_active_scale(state.slog_version or 0):
+            return entry.volume_g
+        if state.id not in self._header_weights:
+            raw = await self.shots.raw_slog(state.id)
+            try:
+                weight = None if raw is None else parse_slog(raw, state.device_id).header_weight
+            except SlogError:
+                weight = None
+            self._header_weights[state.id] = weight
+        weight = self._header_weights[state.id]
+        return entry.volume_g if weight is None else weight.index_volume(entry.volume_g)
 
     # ── notes ────────────────────────────────────────────────────────
 

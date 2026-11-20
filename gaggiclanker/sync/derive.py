@@ -35,6 +35,7 @@ from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import SI_BLUETOOTH_SCALE_CONNECTED, IndexEntry
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls, phase_types
 from gaggiclanker.domain.phase_metrics import compute_phase_metrics
+from gaggiclanker.domain.scale_weights import kept_samples, scale_connected_flag
 from gaggiclanker.domain.slog import DROPOUT_MIN_WEIGHT_G, Slog, SlogError, parse_slog
 
 __all__ = [
@@ -113,7 +114,8 @@ NO_TIMESTAMP_EPOCH = 10_000
 
 #: `si` bit 0x0004: a BLE scale was connected and healthy for this sample. A
 #: weight diagnostic on a shot without one is a diagnostic on an integration of
-#: modelled pump flow, which means much less.
+#: modelled pump flow, which means much less. It is the scale flag of versions up to 7;
+#: version 8 reads bit 0x0100 (`domain/scale_weights.py`).
 SI_SCALE_CONNECTED = SI_BLUETOOTH_SCALE_CONNECTED
 
 
@@ -163,9 +165,9 @@ def derive_shot(
     """
     header = slog.header
     samples = sample_rows(slog)
-    scale_connected = any(
-        sample.si is not None and sample.si & SI_SCALE_CONNECTED for sample in slog.samples
-    )
+    # From the stored rows, so the column and what the rows hold cannot disagree (a sample the
+    # row filter drops carries no weight and no vote).
+    scale_connected = scale_connected_flag(slog.version, samples)
 
     shot = ShotInsert(
         device_id=device_id,
@@ -199,6 +201,12 @@ def derive_shot(
     ):
         if key in from_index:
             setattr(shot, key, from_index[key])
+    if entry is not None:
+        # The machine copies the header's weight into its index; when that weight is the flow
+        # estimate (a version 8 shot with no scale, or one whose scale was lost) so is the
+        # index's volume, unless a person typed a dose out. Everything that falls back to the
+        # index volume (the yield, the ratio, the spread) reads this column.
+        shot.index_volume_g = slog.header_weight.index_volume(entry.volume_g)
 
     error = _attach_diagnostics(
         shot,
@@ -417,19 +425,19 @@ def epoch_to_iso(epoch: int) -> str | None:
 def sample_rows(slog: Slog) -> list[ShotSampleRow]:
     """Sample models into row models, keyed by `t_ms`.
 
-    Two defences the format makes necessary. A sample with no `t` cannot be
-    stored at all (`t_ms` is half the primary key) and a file with two samples
-    at the same millisecond — a torn write, or two `record()` calls inside one
+    The weights stored are the ones a scale gave (:meth:`Slog.recorded_samples`); the
+    bytes in ``raw_slog`` are untouched.
+
+    Two defences the format makes necessary, in ``scale_weights.kept_samples``.
+    A sample with no `t` cannot be stored at all (`t_ms` is half the primary key) and a file with
+    two samples at the same millisecond — a torn write, or two `record()` calls inside one
     tick — would otherwise fail the whole insert on a uniqueness violation and
     cost the shot. The last sample for a timestamp wins, which matches how the
     firmware's own parser walks the file.
     """
-    rows: dict[int, ShotSampleRow] = {}
-    for sample in slog.samples:
-        if sample.t is None:
-            continue
-        rows[sample.t] = ShotSampleRow(
-            t_ms=sample.t,
+    return [
+        ShotSampleRow(
+            t_ms=sample.t or 0,  # kept_samples drops the ones with no time
             tt=sample.tt,
             ct=sample.ct,
             tp=sample.tp,
@@ -445,4 +453,5 @@ def sample_rows(slog: Slog) -> list[ShotSampleRow]:
             wp=sample.wp,
             phase_number=sample.phase,
         )
-    return [rows[key] for key in sorted(rows)]
+        for sample in kept_samples(slog.recorded_samples())
+    ]

@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog
 from gaggiclanker.domain.models import PhaseTransition, Sample, SlogHeader
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
-from gaggiclanker.domain.slog import FIELDS_MASK_ALL, Slog
+from gaggiclanker.domain.slog import FIELDS_MASK_ALL, Slog, encode_slog, parse_slog
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SLOG_FIXTURES = FIXTURES / "slog"
@@ -25,6 +26,11 @@ PROFILE_FIXTURES = FIXTURES / "profiles"
 #: Their own directory, so the tests that cover every vendored shot against a golden do not.
 EDGE_FIXTURES = FIXTURES / "slog_edge"
 CONSTRUCTED_PROFILES = FIXTURES / "constructed_profiles"
+#: A real shot as firmware 1.10 writes it (version 8), and the real version 7 shot it was made from.
+V8_SHOT = FIXTURES / "slog_firmware_1_10" / "shot_225_v8.slog"
+V7_TWIN = EDGE_FIXTURES / "shot_225_fill_ended_at_start.slog"
+#: The sample from which the scale is lost in the shot whose scale dropped out.
+SCALE_LOST_AT = 70
 
 
 def constructed_profile(shot: str, variant: str = "pressure-first") -> dict[str, Any]:
@@ -215,3 +221,14 @@ def with_phase_table(slog: Slog, rows: list[tuple[int, int, int, str]]) -> Slog:
         )
     header = slog.header.model_copy(update={"transitions": transitions})
     return dataclasses.replace(slog, header=header, samples=samples)
+
+
+def edited_v8(edit: Callable[[int, Sample], dict[str, Any]]) -> bytes:
+    """The real version 8 shot with each sample's fields updated by ``edit(index, sample)``.
+
+    The fixture round-trips through the codec byte for byte, so the result differs from the real
+    shot only in what ``edit`` returns: `si` bits, or a weight, never a synthetic trace.
+    """
+    slog = parse_slog(V8_SHOT.read_bytes())
+    samples = [sample.model_copy(update=edit(i, sample)) for i, sample in enumerate(slog.samples)]
+    return encode_slog(dataclasses.replace(slog, samples=samples))

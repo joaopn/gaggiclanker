@@ -410,6 +410,9 @@ class ShotState:
     index_volume_g: float | None
     index_flags: int | None
     has_notes: bool
+    #: The shot file's version, to tell the shots whose index volume needs reading against the
+    #: header (version 8 and later); ``None`` for a shot stored unreadable.
+    slog_version: int | None = None
 
 
 class ShotCounts(BaseModel):
@@ -914,7 +917,7 @@ class ShotsRepository(Repository):
         rows = await self.db.fetch_all(
             """
             SELECT s.id, s.device_id, s.start_epoch, s.quarantined, s.deleted_on_device,
-                   s.index_rating, s.index_volume_g, s.index_flags,
+                   s.index_rating, s.index_volume_g, s.index_flags, s.slog_version,
                    n.shot_id IS NOT NULL AS has_notes
             FROM shots s
             LEFT JOIN device_shot_notes n ON n.shot_id = s.id
@@ -932,6 +935,7 @@ class ShotsRepository(Repository):
                 index_volume_g=row["index_volume_g"],
                 index_flags=row["index_flags"],
                 has_notes=bool(row["has_notes"]),
+                slog_version=row["slog_version"],
             )
             for row in rows
         ]

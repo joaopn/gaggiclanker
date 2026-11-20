@@ -39,7 +39,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from gaggiclanker.domain.cup_flow import cup_flow
+from gaggiclanker.domain.cup_flow import FIRST_DRIP_RISE_G, cup_flow
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_names import phase_key, same_phase
 from gaggiclanker.domain.slog import DROPOUT_MIN_WEIGHT_G
@@ -797,16 +797,45 @@ def _cup_vanished(data: ShotData, last: float) -> bool:
     return last < DROPOUT_MIN_WEIGHT_G and (data.final_weight_g or 0.0) > 0
 
 
+def _cup_started_empty(data: ShotData) -> bool:
+    """Whether the cup's weight from the start of the shot can be taken as zero: it was recorded at
+    the first sample, or the first reading it has is under :data:`FIRST_DRIP_RISE_G`."""
+    if not data.samples:
+        return True
+    if _value(data, "cup_weight", 0) is not None:
+        return True
+    first = next(
+        (
+            v
+            for index in range(len(data.samples))
+            if (v := _value(data, "cup_weight", index)) is not None
+        ),
+        None,
+    )
+    return first is None or first < FIRST_DRIP_RISE_G
+
+
 def _gained(data: ShotData, channel: str, position: int) -> float:
     here = _at_end_of_phase(data, channel, position)
     if here is None:
         raise _Absent("empty_window", "no sample of the channel was recorded in the phase")
-    before = 0.0
+    before: float | None = None
     for earlier in range(position - 1, -1, -1):
         found = _at_end_of_phase(data, channel, earlier)
         if found is not None:
             before = found
             break
+    if before is None:
+        # Nothing was recorded before this phase. The cup starts empty when the shot's first
+        # sample recorded a weight (it was weighed from the start), or when the first weight the
+        # scale gave is under half a gram (still empty, whenever the scale first answered). A scale
+        # that came up with coffee already in the cup (a version 8 shot) says nothing of what it
+        # held when the phase began, and a gain counted from zero would be made up.
+        if channel == "cup_weight" and not _cup_started_empty(data):
+            raise _Absent(
+                "not_recorded", "the cup's weight was not recorded at the start of the phase"
+            )
+        before = 0.0
     return here - before
 
 
