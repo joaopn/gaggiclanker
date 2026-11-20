@@ -42,6 +42,17 @@ log = structlog.get_logger(__name__)
 NOTES_MAX = 200
 
 
+def _holds_at_most_a_dose(notes: ShotNotes) -> bool:
+    """Whether the card has nothing filled in but, perhaps, the dose.
+
+    A field counts as filled when it is anything but the card's own starting
+    value: an empty string, a rating of 0 or a balance of 'balanced'. Extra keys
+    another client wrote count too; the firmware writes only `doseIn`.
+    """
+    others = {key: value for key, value in notes.to_device().items() if key not in ("id", "doseIn")}
+    return not any(value not in (None, "", 0, "balanced") for value in others.values())
+
+
 def _within(value: float | None, low: float, high: float) -> float | None:
     """The value, or ``None`` when the machine gave us one we do not believe.
 
@@ -210,6 +221,13 @@ class JudgementsRepository(Repository):
         from it would mark the shot judged and hide it from the "not judged yet"
         filter for ever.
 
+        A card whose only filled field is the dose is not a judgement either.
+        Firmware 1.10 writes `{"doseIn": "18.0"}` by itself when a shot ends and
+        the notes are empty, so that shape says the profile has a dose and
+        nothing about what anybody thought of the shot. (Somebody who typed only
+        a dose on the machine is treated the same; the notes themselves are
+        stored and shown either way.)
+
         **Never raises.** The machine's notes card validates almost nothing — it
         will happily store `doseIn: "0"`, `doseOut: "600"` or a grind setting
         longer than this column — and those are values our own bounds refuse. A
@@ -221,6 +239,8 @@ class JudgementsRepository(Repository):
         skipped: seeding is a convenience, and losing it must never cost the
         pass it is riding on.
         """
+        if _holds_at_most_a_dose(notes):
+            return False
         parsed = notes.parsed
         rating = notes.rating or None
         try:

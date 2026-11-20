@@ -13,6 +13,10 @@ database.
 
 ## [Unreleased]
 
+### A dose the machine writes on its own no longer counts as a judgement
+
+- Firmware 1.10 writes the profile's dose into a shot's notes when the shot ends and the notes are empty. The app took that for a notes card somebody filled in and gave the shot a judgement holding only a dose, which hid it from the "not judged yet" views. A notes card whose only filled field is the dose now seeds no judgement; the machine's notes are still stored and shown as the machine's notes. A card that holds the dose and also a rating, a dose out, a ratio, a grind setting, a bean, a taste balance of sour or bitter, or a note still seeds one as before. Someone who typed only a dose on the machine gets the same treatment, and so does a notes file read from an import, which follows the same rule. No database change.
+
 ### Notes with a rating entered in the machine's web page now reach the app
 
 - Notes saved from the machine's own web page were never picked up when the machine files them under the shot's plain number (firmware up to 1.9 does): the app asked for the six-digit file name, found nothing, and the shot showed no machine notes and got no judgement from them. The machine flags a shot as having notes only when the card was saved with a rating (or after the machine rebuilds its index), so this concerns shots rated there. When the machine's index says a shot has notes and the six-digit file is not there, the sync now asks for the file under the plain number too, over the same connection as the rest of the notes pass, and the notes arrive and seed the judgement like any others.

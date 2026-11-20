@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from gaggiclanker.db.repos import judgements as judgements_module
 from gaggiclanker.db.repos.judgements import JudgementWrite
 from gaggiclanker.domain.models import ShotNotes
 from tests.recipes.conftest import Fixtures, make_shot
@@ -208,9 +209,58 @@ class TestSeedingFromDeviceNotes:
         assert await wired.judgements.seed_from_device_notes(shot_id, _note("000323")) is False
         assert await wired.judgements.get(shot_id) is None
 
+    async def test_a_lone_dose_is_not_a_judgement(
+        self, wired: Fixtures, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Firmware 1.10 writes `{"doseIn": "18.0"}` when a shot ends and the notes are empty.
+
+        Nobody typed that, so it must not mark the shot judged: it would drop the
+        shot from the "not judged yet" views and the card would look like a verdict.
+        """
+        note = _note("000325", doseIn="18.0")
+        # First half: with the guard off the same card does seed a judgement, so
+        # what follows is the guard's doing and not an accident of the fixture.
+        with monkeypatch.context() as unguarded:
+            unguarded.setattr(judgements_module, "_holds_at_most_a_dose", lambda _notes: False)
+            shot_id = await make_shot(wired.db, "000325")
+            assert await wired.judgements.seed_from_device_notes(shot_id, note) is True
+            row = await wired.judgements.get(shot_id)
+            assert row is not None and row.dose_in_g == 18.0
+            await wired.judgements.delete(shot_id)
+
+        # Second half: with the guard on, nothing is seeded.
+        assert await wired.judgements.seed_from_device_notes(shot_id, note) is False
+        assert await wired.judgements.get(shot_id) is None
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            {"rating": 3},
+            {"doseOut": "36"},
+            {"ratio": "2"},
+            {"grindSetting": "12"},
+            {"notes": "sweet"},
+            {"balanceTaste": "sour"},
+            {"beanType": "Test Roaster Ethiopia"},
+        ],
+        ids=["rating", "dose out", "ratio", "grind", "notes text", "sour", "bean"],
+    )
+    async def test_a_dose_with_anything_else_filled_still_seeds(
+        self, wired: Fixtures, field: dict[str, object]
+    ) -> None:
+        shot_id = await make_shot(wired.db, "000326")
+        created = await wired.judgements.seed_from_device_notes(
+            shot_id, _note("000326", doseIn="18.0", **field)
+        )
+        assert created is True
+        row = await wired.judgements.get(shot_id)
+        assert row is not None and row.dose_in_g == 18.0
+
     async def test_rating_zero_means_unrated_not_zero(self, wired: Fixtures) -> None:
         shot_id = await make_shot(wired.db, "000324")
-        await wired.judgements.seed_from_device_notes(shot_id, _note("000324", doseIn="18"))
+        await wired.judgements.seed_from_device_notes(
+            shot_id, _note("000324", doseIn="18", notes="a little thin")
+        )
         row = await wired.judgements.get(shot_id)
         assert row is not None and row.rating is None
 

@@ -258,3 +258,21 @@ async def test_a_notes_file_that_is_not_json_is_an_error_not_no_notes(
     runs = await small_archive.engine.runs.last_runs()
     assert runs["notes"].errors == 1
     assert "not JSON" in (runs["notes"].error or "")
+
+
+async def test_a_lone_dose_the_machine_wrote_is_stored_but_seeds_no_judgement(
+    small_archive: Archive,
+) -> None:
+    """Firmware 1.10 writes `{"doseIn": "18.0"}` by itself at the end of a shot."""
+    fake_shot = small_archive.device.shots[101]
+    fake_shot.notes = {"doseIn": "18.0"}
+    fake_shot.entry.flags |= 0x04  # HAS_NOTES
+
+    await small_archive.engine.sync_shots(trigger="test")
+
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(101))
+    assert shot is not None
+    stored = await small_archive.engine.notes.get(shot.id)
+    assert stored is not None
+    assert stored.dose_in_g == 18.0
+    assert await small_archive.engine.judgements.get(shot.id) is None
