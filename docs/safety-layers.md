@@ -268,7 +268,7 @@ A `Profile` model mirroring the firmware's own `schema/profile.json`:
 `extra="forbid"` except underscore-prefixed annotation keys and the undocumented
 `transition.target`; `pump` an `int` percentage or a `{target, pressure, flow}`
 object; `phases` non-empty; `operator` restricted to `gte`/`lte`; target `type`
-restricted to `volumetric|pressure|flow|pumped`; ids matching `^[A-Za-z0-9_-]+$`
+restricted to `volumetric|ratio|pressure|flow|pumped`; a `dose` of 0 to 100 g; ids matching `^[A-Za-z0-9_-]+$`
 and at most 31 characters. Equivalent models exist for shot notes, the `.slog`
 header and samples, and the index entry.
 
@@ -281,8 +281,9 @@ is queryable.
 `gaggiclanker/domain/profile_policy.py`, with its bounds in the settings
 registry (Settings → Profile safety policy) so they can be tuned: temperature
 60–100 °C, pressure 0–12 bar, flow 0–10 ml/s, phase duration 0.5–120 s, at most
-10 phases, transition duration no longer than its phase, and every profile
-ending in a volumetric or pumped stop or a bounded duration.
+10 phases, transition duration no longer than its phase, a dose of 0 or 1–100 g, a ratio stop
+of at most 10, and every profile ending in a volumetric or pumped stop (a ratio stop counts only
+when the profile has a dose, which the firmware needs to act on it) or a bounded duration.
 
 Two functions, and the difference between them is the design. `clamp()` moves
 numbers into range **and says what it moved** — the list is stored on the draft

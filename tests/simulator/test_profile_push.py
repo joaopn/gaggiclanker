@@ -48,6 +48,7 @@ from gaggiclanker.domain.models import (
     canonical_document_json,
     document_hash,
 )
+from gaggiclanker.domain.system_profiles import SYSTEM_PROFILE_IDS
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
@@ -81,8 +82,20 @@ def with_test_mark(label: str) -> str:
 
 
 async def delete_now(client: Any, profile_id: str) -> None:
-    """Delete a profile this test made, against what the machine holds right now."""
+    """Delete a profile this test made, against what the machine holds right now.
+
+    Firmware 1.10 refuses to delete the selected profile (`Delete failed`), so a profile a test
+    selected gives the selection back to one of the simulator's own first.
+    """
     held = await client.load_profile(profile_id)
+    if held.selected:
+        others = [p for p in await client.list_profiles() if p.id and p.id != profile_id]
+        # One of the simulator's own that is not a test's, else the backflush that is always there.
+        heir = next(
+            (p for p in others if not p.utility and not p.label.endswith(TEST_MARK)),
+            next(p for p in others if p.id in SYSTEM_PROFILE_IDS),
+        )
+        await client.select_profile(str(heir.id))
     await client.delete_profile(profile_id, expected_hash=document_hash(held))
 
 
@@ -567,9 +580,17 @@ async def snapshot_profiles(device: Any) -> list[dict[str, Any]]:
 
 
 async def restore_profiles(device: Any, snapshot: list[dict[str, Any]]) -> None:
-    """Put the simulator's profile files, ids, stars and selection back as they were."""
+    """Put the simulator's profile files, ids, stars and selection back as they were.
+
+    The machine's own profiles stay (the firmware refuses to delete them); the snapshot's copy is
+    saved over them.
+    """
+    kept = {str(d["id"]) for d in snapshot}
+    # The selection moves onto a profile that stays before any other goes.
+    await device.select_profile(next(iter(kept & SYSTEM_PROFILE_IDS)))
     for p in await device.list_profiles():
-        await delete_now(device, str(p.id))
+        if str(p.id) not in kept and str(p.id) not in SYSTEM_PROFILE_IDS:
+            await delete_now(device, str(p.id))
     for document in snapshot:
         saved = {k: v for k, v in document.items() if k not in ("selected", "favorite")}
         await save_with_id(saved)
@@ -644,20 +665,25 @@ async def test_a_wiped_machine_pauses_and_resuming_puts_the_profiles_back(
     await adopt(app)
     before = await snapshot_profiles(device)
     labels = sorted(str(d["label"]) for d in before)
+    # Firmware 1.10 keeps its backflush and descale through any wipe (and re-seeds them at every
+    # boot), so a wiped machine is one that holds only those two.
+    ordinary = [d for d in before if str(d["id"]) not in SYSTEM_PROFILE_IDS]
     try:
+        await device.select_profile("flush")
         for p in await device.list_profiles():
-            await delete_now(device, str(p.id))
+            if str(p.id) not in SYSTEM_PROFILE_IDS:
+                await delete_now(device, str(p.id))
         paused = await sync(app)
 
         assert "looks reset" in str(paused["paused"]) and paused["writes"] == 0
         board = data(await client.get("/api/profile-board?live=true"))
-        assert board["resume_preview"]["push"] == len(before)
+        assert board["resume_preview"]["push"] == len(ordinary)
         resumed = await client.post("/api/profile-board/resume")
         assert resumed.status_code == 200, resumed.text
 
         back = await sync(app)
 
-        assert len(back["pushed"]) == len(before) and not back["failures"]
+        assert len(back["pushed"]) == len(ordinary) and not back["failures"]
         assert sorted(str(p.label) for p in await device.list_profiles()) == labels
     finally:
         # The simulator's files persist between runs: restore them exactly, ids and selection

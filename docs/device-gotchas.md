@@ -1,6 +1,6 @@
 # Device gotchas
 
-Thirteen firmware behaviours that shaped the sync engine. Every one of them was
+Fifteen firmware behaviours that shaped the sync engine. Every one of them was
 verified against the GaggiMate firmware source
 rather than inferred from the machine's behaviour, and most of them cost
 somebody an evening before they were written down.
@@ -153,12 +153,39 @@ internet: on a machine without one `startEpoch` is seconds since boot, two
 shots can share both number and epoch, and the later one is then taken for the
 earlier one.
 
+**15. Firmware 1.10 changed the shot file, the profile and what the machine will let you do to its list.**
+All read from the v1.10.0 source (`shot_log_format.h`, `profile.h`, `ProfileManager.cpp`,
+`WebSocketHandler.cpp`, `system_profiles.h`); the simulator is pinned to that release.
+
+* **Shot files are version 8**, byte-for-byte the v7 layout with more `si` bits: `0x0020` the
+  process is a brew, `0x0040` the target is volumetric, `0x0080` the phase has a volumetric
+  target, `0x0100` the active scale (hardware or Bluetooth) is connected and healthy. The
+  codec reads and writes v8 exactly as v7. The firmware also reads an old **hardware-scale
+  version 6** (`reserved0 == 26` and `fieldsMask == 0x1FFF`: 26-byte samples whose `t` is the
+  2-byte tick count of v1 to v5, not milliseconds); this codec reads it by the same rule
+  (`shotLogHasElapsedTimestamp`) and never writes it. Exit reason 9 is a **ratio target**.
+* **Profiles carry a `dose`**, written on every profile (`0` is none; the schema says 1-100),
+  and a **`ratio` target type**: it fires on `volume / dose`, is skipped while the dose is 0
+  (`Phase::isFinished`), and counts as volumetric everywhere else (`hasVolumetricTarget`,
+  `getTotalVolume` is ratio times dose). A file the machine rewrote with `dose: 0` is the same
+  document as the stored one without it, so `canonical_document_json` drops a dose of 0 (the
+  same sentinel rule as a phase `temperature` of 0) and no recorded hash changed.
+* **Two system profiles, `flush` and `descale`,** are seeded on every boot when missing,
+  forced to `utility`, editable, and refused by `req:profiles:delete` (`Delete failed`). They
+  come back under the same ids after a wipe, so they say nothing about whether the machine was
+  reset. The firmware's own descale (a 0 degree setpoint, 200 s waits) is outside this app's
+  safety policy, so a change to it is reported as not pushed.
+* **`req:profiles:delete` also refuses the selected profile,** `req:profiles:select` of an id it
+  cannot load answers `Profile not found`, and `req:profiles:favorite` past **ten** answers
+  `Favorite limit reached` (a new profile saved at the limit is saved and not starred). The
+  minimal list now carries `utility`; the app asks for full documents.
+
 ---
 
 These are enforced, not merely documented. `gaggiclanker/device/fake.py` is a
 real HTTP + WebSocket server that reproduces the awkward ones — half-written
 `.slog` files, the SPA served where binary was asked for, 503 during an OTA, the
-three-client limit — and the whole offline suite runs against it.
+three-client limit, the 1.10 refusals above — and the whole offline suite runs against it.
 `tests/device/test_simulator.py`, `tests/simulator/test_e2e.py` and
 `tests/simulator/test_profile_push.py` then check the same client against the
 actual firmware compiled natively, which is what caught `OtaSettings` rejecting

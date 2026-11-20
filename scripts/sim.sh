@@ -34,12 +34,12 @@
 # the loop that applies its `*.patch` files are kept for the next time the
 # firmware needs one; the directory is empty until then.
 #
-# The firmware is pinned. `GAGGIMATE_FIRMWARE_REF` (default `v1.9.0`) is the tag
+# The firmware is pinned. `GAGGIMATE_FIRMWARE_REF` (default `v1.10.0`) is the tag
 # or commit the scratch tree is checked out at, so the simulator gate tests a
 # named release rather than whatever the reference checkout's head happens to
 # be, and a run says which. The reference checkout must have that ref (it may be
-# a shallow clone: `git -C <checkout> fetch --depth 50 origin tag v1.9.0`). To
-# try another release: `GAGGIMATE_FIRMWARE_REF=v1.10.0 scripts/sim.sh test`. A
+# a shallow clone: `git -C <checkout> fetch --depth 50 origin tag v1.10.0`). To
+# try another release: `GAGGIMATE_FIRMWARE_REF=v1.9.0 scripts/sim.sh test`. A
 # scratch tree at any other commit is thrown away and cloned again, since its
 # generated web UI, version header and build products belong to that commit.
 #
@@ -65,7 +65,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The reference checkout, read only. Override to seed from your own clone.
 FIRMWARE_SRC="${GAGGIMATE_FIRMWARE_DIR:-/workspace/gaggiclanker/external/gaggimate}"
 # The firmware release the simulator builds; see the header.
-FIRMWARE_REF="${GAGGIMATE_FIRMWARE_REF:-v1.9.0}"
+FIRMWARE_REF="${GAGGIMATE_FIRMWARE_REF:-v1.10.0}"
 # Where the build actually happens.
 SIM_WORKDIR="${GAGGIMATE_SIM_WORKDIR:-/workspace/.tools/gaggimate-sim}"
 
