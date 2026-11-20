@@ -29,9 +29,19 @@ from gaggiclanker.domain.slog import parse_slog
 def test_the_synthetic_shot_is_a_real_slog() -> None:
     """Built through the encoder, so it cannot rot away from the codec."""
     slog = parse_slog(synthetic_slog_bytes(12))
-    assert slog.header.version == 7
+    assert slog.header.version == 8
     assert len(slog.samples) == 12
     assert slog.samples[-1].wp is not None
+
+
+def test_the_synthetic_shot_says_whether_its_scale_was_on_the_way_firmware_1_10_does() -> None:
+    """v8's "active scale is healthy" bit (0x0100) is on every sample of a shot with a scale and
+    on none of one without."""
+    with_scale = parse_slog(synthetic_slog_bytes(12))
+    without = parse_slog(synthetic_slog_bytes(12, scale=False))
+    assert all((s.si or 0) & 0x0100 for s in with_scale.samples)
+    assert not any((s.si or 0) & 0x0100 for s in without.samples)
+    assert all((s.si or 0) & 0x0020 for s in with_scale.samples)  # a brew process
 
 
 def test_header_only_bytes_is_what_a_half_written_file_looks_like() -> None:
@@ -47,7 +57,8 @@ def test_the_fake_falls_back_to_a_synthetic_shot_without_fixtures(tmp_path) -> N
     """`python -m gaggiclanker.device.fake` has to work from an installed wheel."""
     device = build_fake_device(tmp_path / "not-here")
     assert len(device.shots) == 1
-    assert device.profiles == []
+    # Nothing but the profiles the firmware seeds on every boot.
+    assert [p["id"] for p in device.profiles] == ["flush", "descale"]
 
 
 def test_the_index_it_serves_round_trips_through_our_parser(
@@ -140,7 +151,7 @@ async def test_a_brew_ends_with_a_saved_shot() -> None:
     assert frames[-1] == {"tp": "evt:history-shot-saved", "id": 7}
     assert 7 in device.shots
     saved = device.shots[7]
-    assert parse_slog(saved.slog_bytes).header.version == 7
+    assert parse_slog(saved.slog_bytes).header.version == 8
     # The header and the index entry have to name the same profile: the archive
     # reads the first, the device's own list reads the second, and a shot that
     # disagrees with itself looks like a sync bug.
@@ -276,23 +287,23 @@ async def test_a_client_that_connects_later_is_told_the_selection() -> None:
     assert (status["puid"], status["p"]) == ("aaa", "First")
 
 
-async def test_selecting_an_id_with_no_file_leaves_the_display_naming_nothing() -> None:
-    """`selectProfile` stores the id, then `loadSelectedProfile` fails and the in-memory
-    profile is the empty one: no label, no id."""
+async def test_selecting_an_id_with_no_file_is_refused_and_the_selection_stays() -> None:
+    """Firmware 1.10: `selectProfile` loads the file first and answers `Profile not found` for
+    one it cannot read, instead of storing the id and showing an empty profile."""
     device = _two_profiles()
     await device.start()
     try:
         await device.select_profile("bbb")
         async with connect(f"ws://{device.address}/ws") as socket:
             assert (await _status(socket))["puid"] == "bbb"
-            await socket.send(json.dumps({"tp": "req:profiles:select", "rid": "q", "id": "nope"}))
-            status = await _status(socket)
+            reply = await _request(socket, "req:profiles:select", id="nope")
             listed = (await _request(socket, "req:profiles:list"))["profiles"]
     finally:
         await device.stop()
 
-    assert (status["puid"], status["p"]) == ("", "")
-    assert not any(p["selected"] for p in listed)
+    assert reply["error"] == "Profile not found"
+    assert device.selected_profile_id == "bbb"
+    assert [p["id"] for p in listed if p["selected"]] == ["bbb"]
 
 
 async def test_renaming_the_selected_profile_reaches_the_status() -> None:
@@ -319,44 +330,181 @@ async def test_renaming_the_selected_profile_reaches_the_status() -> None:
     assert (status["puid"], status["p"]) == ("aaa", "Renamed")
 
 
-async def test_deleting_the_selected_profile_leaves_the_status_naming_it() -> None:
-    """`deleteProfile` touches neither the setting nor the loaded copy: the status keeps
-    naming the file that is gone, and no listed profile is selected, until something selects
-    another (or a save reloads the selection and finds nothing)."""
+async def test_deleting_the_selected_profile_is_refused() -> None:
+    """Firmware 1.10: `deleteProfile` refuses the selected profile (`Delete failed`); the file,
+    the selection and the status stay as they were."""
     device = _two_profiles()
     await device.start()
     try:
         await device.select_profile("aaa")
         async with connect(f"ws://{device.address}/ws") as socket:
             await _status(socket)
-            await _request(socket, "req:profiles:delete", id="aaa")
+            refused = await _request(socket, "req:profiles:delete", id="aaa")
             listed = (await _request(socket, "req:profiles:list"))["profiles"]
-        async with connect(f"ws://{device.address}/ws") as socket:
-            after_delete = await _status(socket)
-            await socket.send(json.dumps({"tp": "req:profiles:select", "rid": "q", "id": "bbb"}))
-            after_select = await _status(socket)
+            deleted_other = await _request(socket, "req:profiles:delete", id="bbb")
     finally:
         await device.stop()
 
-    assert [(p["id"], p["selected"]) for p in listed] == [("bbb", False)]
-    assert (after_delete["puid"], after_delete["p"]) == ("aaa", "First")
-    assert (after_select["puid"], after_select["p"]) == ("bbb", "Second")
+    assert refused["error"] == "Delete failed"
+    assert [(p["id"], p["selected"]) for p in listed if p["id"] in ("aaa", "bbb")] == [
+        ("aaa", True),
+        ("bbb", False),
+    ]
+    assert "error" not in deleted_other
 
 
-async def test_a_selection_set_on_the_fake_before_any_client_survives_its_file_being_deleted() -> (
-    None
-):
-    """The display loads its selection at boot, so the stale name after a delete does not
-    depend on anyone having asked for the status first."""
+async def test_a_selection_set_on_the_fake_before_any_client_is_protected_all_the_same() -> None:
+    """The display loads its selection at boot, so the refusal does not depend on anyone having
+    asked for the status first."""
     device = _two_profiles()
     device.selected_profile_id = "aaa"
     await device.start()
     try:
         async with connect(f"ws://{device.address}/ws") as socket:
-            await _request(socket, "req:profiles:delete", id="aaa")
+            refused = await _request(socket, "req:profiles:delete", id="aaa")
         async with connect(f"ws://{device.address}/ws") as socket:
             status = await _status(socket)
     finally:
         await device.stop()
 
+    assert refused["error"] == "Delete failed"
     assert (status["puid"], status["p"]) == ("aaa", "First")
+
+
+# ── firmware 1.10 ────────────────────────────────────────────────────
+
+
+async def test_a_new_machine_has_its_two_system_profiles_and_refuses_to_delete_them() -> None:
+    device = FakeDevice()
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            listed = (await _request(socket, "req:profiles:list"))["profiles"]
+            refused = [
+                await _request(socket, "req:profiles:delete", id=pid)
+                for pid in ("flush", "descale")
+            ]
+            again = (await _request(socket, "req:profiles:list"))["profiles"]
+    finally:
+        await device.stop()
+
+    assert [(p["id"], p["utility"]) for p in listed] == [("flush", True), ("descale", True)]
+    assert [p["label"] for p in listed] == ["[Utility] Backflush", "[Utility] Descale"]
+    assert [r["error"] for r in refused] == ["Delete failed", "Delete failed"]
+    assert [p["id"] for p in again] == ["flush", "descale"]
+
+
+async def test_a_boot_seeds_a_missing_system_profile_and_keeps_an_edited_one() -> None:
+    device = FakeDevice()
+    edited = next(p for p in device.profiles if p["id"] == "flush")
+    edited["label"] = "My backflush"
+    device.profiles = [edited]
+    device.ensure_system_profiles()
+    assert [(p["id"], p["label"]) for p in device.profiles] == [
+        ("flush", "My backflush"),
+        ("descale", "[Utility] Descale"),
+    ]
+
+
+async def test_a_system_profile_stays_a_utility_profile_whatever_a_save_says() -> None:
+    device = FakeDevice()
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            seeded = (await _request(socket, "req:profiles:load", id="flush"))["profile"]
+            saved = await _request(
+                socket,
+                "req:profiles:save",
+                profile={**seeded, "utility": False, "description": "edited"},
+            )
+    finally:
+        await device.stop()
+
+    assert saved["profile"]["utility"] is True
+    assert saved["profile"]["description"] == "edited"
+
+
+async def test_the_firmware_writes_a_dose_on_every_profile_and_keeps_a_ratio_stop() -> None:
+    device = _two_profiles()
+    device.profiles[1]["dose"] = 18
+    device.profiles[1]["phases"] = [
+        {"name": "p", "phase": "brew", "valve": 1, "duration": 30, "pump": 100}
+        | {"targets": [{"type": "ratio", "operator": "gte", "value": 2.0}]}
+    ]
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            first = (await _request(socket, "req:profiles:load", id="aaa"))["profile"]
+            second = (await _request(socket, "req:profiles:load", id="bbb"))["profile"]
+    finally:
+        await device.stop()
+
+    assert first["dose"] == 0
+    assert second["dose"] == 18
+    assert second["phases"][0]["targets"] == [{"type": "ratio", "operator": "gte", "value": 2.0}]
+
+
+async def test_the_minimal_list_carries_utility() -> None:
+    device = _two_profiles()
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            listed = (await _request(socket, "req:profiles:list", minimal=True))["profiles"]
+    finally:
+        await device.stop()
+
+    assert listed == [
+        {"id": "aaa", "label": "First", "utility": False},
+        {"id": "bbb", "label": "Second", "utility": False},
+    ]
+
+
+async def test_an_eleventh_favourite_is_refused_and_starring_one_already_starred_is_not() -> None:
+    device = FakeDevice()
+    device.profiles = [
+        {"id": f"p{i:02d}", "label": f"P{i}", "temperature": 90, "phases": []} for i in range(12)
+    ]
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            replies = [
+                await _request(socket, "req:profiles:favorite", id=f"p{i:02d}") for i in range(11)
+            ]
+            again = await _request(socket, "req:profiles:favorite", id="p03")
+            await _request(socket, "req:profiles:unfavorite", id="p00")
+            after_room = await _request(socket, "req:profiles:favorite", id="p10")
+    finally:
+        await device.stop()
+
+    assert [("error" in r) for r in replies] == [False] * 10 + [True]
+    assert replies[10]["error"] == "Favorite limit reached"
+    assert "error" not in again
+    assert "error" not in after_room
+    assert len(device.favorite_profile_ids) == 10
+    assert "p10" in device.favorite_profile_ids
+
+
+async def test_a_new_profile_saved_at_the_favourite_limit_is_saved_and_not_starred() -> None:
+    device = FakeDevice()
+    device.favorite_profile_ids = {f"f{i}" for i in range(10)}
+    await device.start()
+    try:
+        async with connect(f"ws://{device.address}/ws") as socket:
+            saved = await _request(
+                socket,
+                "req:profiles:save",
+                profile={
+                    "label": "New",
+                    "type": "standard",
+                    "temperature": 90,
+                    "phases": [
+                        {"name": "p", "phase": "brew", "valve": 1, "duration": 20, "pump": 100}
+                    ],
+                },
+            )
+    finally:
+        await device.stop()
+
+    assert "error" not in saved
+    assert saved["profile"]["favorite"] is False
+    assert len(device.favorite_profile_ids) == 10

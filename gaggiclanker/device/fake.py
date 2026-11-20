@@ -45,6 +45,10 @@ from gaggiclanker.domain.index import encode_index
 from gaggiclanker.domain.models import (
     SHOT_FLAG_COMPLETED,
     SHOT_FLAG_HAS_NOTES,
+    SI_ACTIVE_SCALE_CONNECTED,
+    SI_PHASE_HAS_VOLUMETRIC,
+    SI_PROCESS_IS_BREW,
+    SI_TARGET_IS_VOLUMETRIC,
     IndexEntry,
     IndexHeader,
     PhaseTransition,
@@ -76,9 +80,9 @@ MAX_WS_CLIENTS = 3
 #: The identity the fake reports. A Pro board, because that is the maintainer's
 #: machine and the one where pressure telemetry is real.
 DEFAULT_IDENTITY: dict[str, Any] = {
-    "latestVersion": "1.9.0",
-    "displayVersion": "v1.9.0-3-gabc123",
-    "controllerVersion": "v1.9.0",
+    "latestVersion": "1.10.0",
+    "displayVersion": "v1.10.0-3-gabc123",
+    "controllerVersion": "v1.10.0",
     "hardware": "GaggiMate Pro Rev 1.1",
     "displayUpdateAvailable": False,
     "controllerUpdateAvailable": False,
@@ -144,6 +148,72 @@ SHORT_ID_ALPHABET = string.ascii_letters + string.digits
 SHORT_ID_LENGTH = 10
 
 
+#: The two profiles firmware 1.10 seeds on every boot when they are missing
+#: (`ProfileManager::ensureSystemProfiles`, `system_profiles.h`): fixed ids, utility,
+#: editable, and refused by delete.
+SYSTEM_PROFILE_IDS = ("flush", "descale")
+
+#: `MAX_FAVORITED_PROFILES` in `ProfileManager.h`: `req:profiles:favorite` past it answers
+#: `Favorite limit reached`.
+MAX_FAVORITED_PROFILES = 10
+
+
+def _system_phase(
+    name: str, kind: str, valve: int, duration: float, pump: int, pumped_ml: float = 0.0
+) -> dict[str, Any]:
+    """`systemPhase` in `system_profiles.h`: a simple (percent) pump, an instant transition."""
+    phase: dict[str, Any] = {
+        "name": name,
+        "phase": kind,
+        "valve": valve,
+        "duration": duration,
+        "temperature": 0,
+        "transition": {"type": "instant", "target": "time", "duration": 0, "adaptive": False},
+        "pump": pump,
+    }
+    if pumped_ml > 0:
+        phase["targets"] = [{"type": "pumped", "operator": "gte", "value": pumped_ml}]
+    return phase
+
+
+def system_profile(profile_id: str) -> dict[str, Any]:
+    """The seed for ``flush`` (Backflush) or ``descale`` (Descaling), as the firmware makes it."""
+    if profile_id == "flush":
+        phases: list[dict[str, Any]] = []
+        for i in range(5):
+            phases.append(_system_phase("Pressurize", "brew", 1, 10.0, 100))
+            if i < 4:
+                phases.append(_system_phase("Depressurize", "brew", 0, 10.0, 0))
+        return {
+            "id": "flush",
+            "label": "[Utility] Backflush",
+            "type": "standard",
+            "description": "",
+            "temperature": 93.0,
+            "utility": True,
+            "phases": phases,
+        }
+    if profile_id == "descale":
+        return {
+            "id": "descale",
+            "label": "[Utility] Descale",
+            "type": "pro",
+            "description": "",
+            "temperature": 0.0,
+            "utility": True,
+            "phases": [
+                _system_phase("300ml Steam Flush", "brew", 0, 40.0, 100, 300.0),
+                _system_phase("Wait 1 of 3", "preinfusion", 0, 200.0, 0),
+                _system_phase("Wait 2 of 3", "preinfusion", 0, 200.0, 0),
+                _system_phase("Wait 3 of 3", "preinfusion", 0, 200.0, 0),
+                _system_phase("300ml Steam Flush", "brew", 0, 40.0, 100, 300.0),
+                _system_phase("Rinse and Refill", "preinfusion", 0, 120.0, 0),
+                _system_phase("1lt Flush", "brew", 0, 120.0, 100, 1000.0),
+            ],
+        }
+    raise KeyError(profile_id)
+
+
 def generate_short_id() -> str:
     """The firmware's own id generator, in Python."""
     return "".join(random.choice(SHORT_ID_ALPHABET) for _ in range(SHORT_ID_LENGTH))  # noqa: S311
@@ -160,6 +230,7 @@ def write_profile(profile: dict[str, Any], *, favorite: bool, selected: bool) ->
     Specifically it **always** emits, whatever the input said:
 
     * `id`, `favorite` and `selected` — all three owned by NVS, not by the file;
+    * a `dose`, `0` where the author gave none (firmware 1.10);
     * a `transition` on every phase, defaulting to instant/0/false;
     * `transition.target`, which is absent from `schema/profile.json` entirely
       and defaults to `"time"`;
@@ -177,6 +248,8 @@ def write_profile(profile: dict[str, Any], *, favorite: bool, selected: bool) ->
         "type": profile.get("type", "standard"),
         "description": profile.get("description", ""),
         "temperature": float(profile.get("temperature", 0) or 0),
+        # Firmware 1.10 writes the dose on every profile, 0 meaning none (`writeProfile`).
+        "dose": float(profile.get("dose", 0) or 0),
         "favorite": favorite,
         "selected": selected,
         "utility": bool(profile.get("utility", False)),
@@ -219,7 +292,7 @@ def _write_phase(phase: dict[str, Any]) -> dict[str, Any]:
         }
         for target in phase.get("targets") or []
         # An unknown target type is silently dropped.
-        if target.get("type") in ("volumetric", "pressure", "flow", "pumped")
+        if target.get("type") in ("volumetric", "ratio", "pressure", "flow", "pumped")
     ]
     if targets:
         written["targets"] = targets
@@ -249,6 +322,10 @@ class FakeDevice:
     ota_in_progress: bool = False
     #: Paths that answer with the SPA instead of what was asked for.
     html_paths: set[str] = field(default_factory=set)
+    #: Firmware 1.10's `resolveNotesPath`: a notes request moves a file saved under the unpadded
+    #: name onto the padded one and answers it. Off, the machine is a 1.9 one, whose socket request
+    #: names only the padded file.
+    moves_legacy_notes: bool = True
     #: Paths that answer with this status and no data, whatever is behind them.
     error_paths: dict[str, int] = field(default_factory=dict)
     #: Request types the fake receives and deliberately never answers.
@@ -327,6 +404,18 @@ class FakeDevice:
     _clients: list[web.WebSocketResponse] = field(default_factory=list)
     _refused: int = 0
     _evicted: int = 0
+
+    def __post_init__(self) -> None:
+        # A machine that has booted has its system profiles.
+        self.ensure_system_profiles()
+
+    def ensure_system_profiles(self) -> None:
+        """`ProfileManager::ensureSystemProfiles`: seed ``flush`` and ``descale`` when missing,
+        as every boot does. An edited one is kept. A machine is built with them; a test that
+        replaces ``profiles`` describes a machine of its own, and calls this to reboot it."""
+        for profile_id in SYSTEM_PROFILE_IDS:
+            if not any(p.get("id") == profile_id for p in self.profiles):
+                self.profiles.append(system_profile(profile_id))
 
     # ── lifecycle ────────────────────────────────────────────────────
 
@@ -759,7 +848,14 @@ class FakeDevice:
         if tp == "req:profiles:list":
             minimal = bool(message.get("minimal"))
             profiles = (
-                [{"id": p.get("id"), "label": p.get("label")} for p in self.profiles]
+                [
+                    {
+                        "id": p.get("id"),
+                        "label": p.get("label"),
+                        "utility": bool(p.get("utility", False)),
+                    }
+                    for p in self.profiles
+                ]
                 if minimal
                 else [self._serialise(p) for p in self.profiles]
             )
@@ -776,11 +872,25 @@ class FakeDevice:
         elif tp == "req:profiles:delete":
             await self._delete_profile(socket, tp, rid, str(message.get("id", "")))
         elif tp == "req:profiles:select":
-            self.selected_profile_id = str(message.get("id", ""))
+            wanted = str(message.get("id", ""))
+            # `ProfileManager::selectProfile` refuses an id whose file it cannot load (1.10):
+            # nothing is selected and the reply says so.
+            if not any(p.get("id") == wanted for p in self.profiles):
+                await self._reply(socket, tp, rid, error="Profile not found")
+                return
+            self.selected_profile_id = wanted
             await self._reply(socket, tp, rid)
             await self._publish_selection()
         elif tp == "req:profiles:favorite":
-            self.favorite_profile_ids.add(str(message.get("id", "")))
+            wanted = str(message.get("id", ""))
+            # `addFavoritedProfile`: starring one already starred is fine; an eleventh is not.
+            if (
+                wanted not in self.favorite_profile_ids
+                and len(self.favorite_profile_ids) >= MAX_FAVORITED_PROFILES
+            ):
+                await self._reply(socket, tp, rid, error="Favorite limit reached")
+                return
+            self.favorite_profile_ids.add(wanted)
             await self._reply(socket, tp, rid)
         elif tp == "req:profiles:unfavorite":
             self.favorite_profile_ids.discard(str(message.get("id", "")))
@@ -802,15 +912,22 @@ class FakeDevice:
                     await self.broadcast({"tp": "evt:status", **self._state_frame()})
             return
         elif tp == "req:history:notes:get":
+            # `loadNotes` -> `resolveNotesPath(id.toInt())` (1.10): the id is read as a number,
+            # so the padded and the unpadded spelling reach the same shot, and a notes file saved
+            # under the unpadded name is moved onto the padded one before it is read.
             wanted = str(message.get("id", ""))
             shot = next(
                 (
                     s
                     for s in self.shots.values()
-                    if pad6(s.entry.id) == wanted and not s.legacy_notes
+                    if wanted.isdigit()
+                    and s.entry.id == int(wanted)
+                    and (self.moves_legacy_notes or not s.legacy_notes)
                 ),
                 None,
             )
+            if shot is not None and shot.legacy_notes and self.moves_legacy_notes:
+                shot.legacy_notes = False
             await self._reply(socket, tp, rid, notes=(shot.notes if shot else {}) or {})
         else:
             # Fire-and-forget commands get no answer at all on the real device,
@@ -845,7 +962,8 @@ class FakeDevice:
           not starred, since only a generated id counts as new;
         * a **new** profile is auto-favourited (`ProfileManager.cpp:186-188`),
           so a push puts an unreviewed draft on the machine's home screen unless
-          somebody unstars it.
+          somebody unstars it; with ten favourites already, it is saved and not starred
+          (1.10 caps them).
         """
         incoming = message.get("profile")
         if not isinstance(incoming, dict):
@@ -857,6 +975,9 @@ class FakeDevice:
         if is_new:
             profile_id = generate_short_id()
         stored["id"] = profile_id
+        if profile_id in SYSTEM_PROFILE_IDS:
+            # `saveProfile` keeps a system profile a utility profile, whatever the file says.
+            stored["utility"] = True
         if self.mutate_on_save is not None:
             stored = self.mutate_on_save(stored)
             stored["id"] = profile_id
@@ -865,7 +986,11 @@ class FakeDevice:
             self.profiles.append(stored)
         else:
             self.profiles[self.profiles.index(existing)] = stored
-        if is_new and self.auto_favorite_new:
+        if (
+            is_new
+            and self.auto_favorite_new
+            and len(self.favorite_profile_ids) < MAX_FAVORITED_PROFILES
+        ):
             self.favorite_profile_ids.add(profile_id)
         await self._reply(socket, tp, rid, profile=self._serialise(stored))
         # `saveProfile` ends in `selectProfile(<the setting>)`, whichever profile it saved,
@@ -877,7 +1002,12 @@ class FakeDevice:
         self, socket: web.WebSocketResponse, tp: str, rid: Any, profile_id: str
     ) -> None:
         found = next((p for p in self.profiles if p.get("id") == profile_id), None)
-        if found is None:
+        # 1.10 refuses the system profiles and the selected profile (`deleteProfile`).
+        if (
+            found is None
+            or profile_id in SYSTEM_PROFILE_IDS
+            or profile_id == self.selected_profile_id
+        ):
             await self._reply(socket, tp, rid, error="Delete failed")
             return
         self._loaded_copy()  # the display loaded its selection at boot, before the file goes
@@ -885,11 +1015,8 @@ class FakeDevice:
         # Deleting removes it from favourites and clears the startup profile if
         # it matched (`ProfileManager::deleteProfile`).
         self.favorite_profile_ids.discard(profile_id)
-        # The selection is left pointing at the missing id: `deleteProfile` touches
-        # neither the selected-profile setting nor the loaded copy, so the state frame
-        # keeps naming a file that is gone (`p`, `puid`) and no listed profile is
-        # selected, until something selects another or a save reloads it. An app that
-        # deletes a selected profile must select its replacement first.
+        # (The selected profile is never deleted any more, so the selection never points at
+        # a missing id through here; a test can still leave it so by emptying `profiles`.)
         if self.device_settings.get("startupProfile") == profile_id:
             self.device_settings["startupProfile"] = ""
         await self._reply(socket, tp, rid)
@@ -914,7 +1041,7 @@ def header_only_bytes(slog_bytes: bytes) -> bytes:
     because it is written at open, the samples have not been flushed, and the
     count is patched in at close.
     """
-    version = slog_bytes[4] if len(slog_bytes) > 4 else 7
+    version = slog_bytes[4] if len(slog_bytes) > 4 else 8
     header_size = 128 if version <= 4 else 512
     head = bytearray(slog_bytes[:header_size])
     if len(head) >= 20:
@@ -929,14 +1056,23 @@ def _header_epoch(slog_bytes: bytes, shot_id: int) -> int:
     return 1_700_000_000 + shot_id
 
 
+#: The `si` bits the synthetic shot carries besides the scale's: what it always had (shot started
+#: volumetric, currently volumetric, volumetric available) and, from v8, a brew process whose
+#: target and phase are volumetric.
+_SYNTHETIC_SI = 0x000B | SI_PROCESS_IS_BREW | SI_TARGET_IS_VOLUMETRIC | SI_PHASE_HAS_VOLUMETRIC
+
+
 def synthetic_slog_bytes(
     samples: int = 40,
     *,
     shot_id: int = 1,
     start_epoch: int = 1_700_000_000,
     profile_name: str = "Test Profile",
+    scale: bool = True,
 ) -> bytes:
-    """A small but real v7 `.slog`, for when no fixture directory is present.
+    """A small but real v8 `.slog` (what firmware 1.10 writes), for when no fixture directory is
+    present. ``scale`` says whether the machine's scale was on: the v8 "active scale" bit
+    (0x0100) is set on every sample then, as the firmware sets it.
 
     Deliberately built through :func:`encode_slog` rather than checked in as
     bytes, so it stays valid if the codec's understanding of the format ever
@@ -959,7 +1095,7 @@ def synthetic_slog_bytes(
                 v=i * 0.9,
                 ev=i * 0.9,
                 pr=4.5,
-                si=0x000B,
+                si=_SYNTHETIC_SI | (SI_ACTIVE_SCALE_CONNECTED if scale else 0),
                 wp=i * 0.8,
             )
         )
@@ -971,7 +1107,7 @@ def synthetic_slog_bytes(
         row.phase = 1 if i >= 8 else 0
         row.phase_name = "Brew" if i >= 8 else "Preinfusion"
     header = SlogHeader(
-        version=7,
+        version=8,
         sample_size=0,
         header_size=512,
         sample_interval=250,
@@ -1047,6 +1183,7 @@ def build_fake_device(fixtures: Path | None = None) -> FakeDevice:
     fixtures = fixtures if fixtures is not None else find_fixtures()
     device = FakeDevice()
     device.profiles = _load_profiles(fixtures)
+    device.ensure_system_profiles()
 
     for shot_id, raw, label in _load_slogs(fixtures):
         device.add_shot(shot_id, raw, profile_name=label)

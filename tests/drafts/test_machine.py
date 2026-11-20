@@ -517,6 +517,62 @@ async def test_the_selected_profile_is_never_removed_with_nothing_to_take_the_se
     assert fake_device.selected_profile_id == old_id
 
 
+async def test_firmware_1_10_refuses_to_delete_the_selected_profile_so_no_delete_is_sent(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    """Both halves. Without the app's rule the delete would go out and the machine would answer
+    `Delete failed` (it keeps the selected profile): the rule is what keeps that answer from
+    being a failure the sync counts toward its three-in-a-row stop."""
+    app, _ = writes_on
+    client = app.state.connection.client
+    old, old_id, _, _ = await two_copies(app, fake_device)
+    fake_device.selected_profile_id = old_id
+
+    # The half that shows the delete would be sent and refused.
+    mark = len(fake_device.ws_requests)
+    with pytest.raises(DeviceError, match="Delete failed"):
+        await client.delete_profile(old_id, expected_hash=document_hash(old))
+    assert "req:profiles:delete" in fake_device.ws_requests[mark:]
+    assert old_id in {str(p["id"]) for p in fake_device.profiles}
+
+    # The rule: the same removal through the one guard sends no delete at all.
+    mark = len(fake_device.ws_requests)
+    removal = await remove_profile(
+        client,
+        device_id=old_id,
+        expected_hash=document_hash(old),
+        successor=None,
+        carry_favorite=False,
+    )
+    assert not removal.removed and removal.reason == NO_SUCCESSOR
+    assert "req:profiles:delete" not in fake_device.ws_requests[mark:]
+
+
+async def test_a_successor_the_machine_cannot_select_is_a_reason_and_the_profile_stays(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    """Firmware 1.10 answers `Profile not found` to a select of an id it cannot load. The removal
+    reports it as a value and sends no delete (the old file keeps the selection it had)."""
+    app, _ = writes_on
+    old, old_id, _, _ = await two_copies(app, fake_device)
+    fake_device.selected_profile_id = old_id
+    mark = len(fake_device.ws_requests)
+
+    removal = await remove_profile(
+        app.state.connection.client,
+        device_id=old_id,
+        expected_hash=document_hash(old),
+        successor="no-such-file",
+        carry_favorite=False,
+    )
+
+    assert not removal.removed
+    assert removal.reason == "Profile not found"
+    assert "req:profiles:select" in fake_device.ws_requests[mark:]
+    assert "req:profiles:delete" not in fake_device.ws_requests[mark:]
+    assert fake_device.selected_profile_id == old_id
+
+
 async def test_a_removal_that_does_not_carry_the_star_moves_only_the_selection(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:

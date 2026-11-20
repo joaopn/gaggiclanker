@@ -209,6 +209,7 @@ async def test_notes_the_web_page_saved_are_found_only_by_the_unpadded_name(
     assert shot.notes is not None
     shot.notes["id"] = "129"  # the id the page wrote
     shot.legacy_notes = True
+    fake_device.moves_legacy_notes = False  # a 1.9 machine; 1.10 moves the file, below
 
     assert await device_client.fetch_notes_json(129) is None
     # The display's socket request names the padded file, which is not there either.
@@ -220,6 +221,23 @@ async def test_notes_the_web_page_saved_are_found_only_by_the_unpadded_name(
     assert found.id == "129"
     # The padded name is the display's: a normal shot is not found by the plain one.
     fake_device.shots[129].legacy_notes = False
+    assert await device_client.fetch_notes_json(129, unpadded=True) is None
+
+
+async def test_firmware_1_10_moves_a_legacy_notes_file_when_its_notes_are_asked_for(
+    fake_device: FakeDevice, device_client: GaggimateClient
+) -> None:
+    """`resolveNotesPath`: the socket request reads the id as a number, moves the unpadded file
+    onto the padded name and answers it; the unpadded URL then no longer finds it."""
+    shot = fake_device.shots[129]
+    shot.legacy_notes = True
+    assert await device_client.fetch_notes_json(129) is None
+
+    notes = await device_client.get_shot_notes(129)
+
+    assert notes is not None and notes.dose_out == "36.5"
+    assert shot.legacy_notes is False
+    assert await device_client.fetch_notes_json("000129") is not None
     assert await device_client.fetch_notes_json(129, unpadded=True) is None
 
 

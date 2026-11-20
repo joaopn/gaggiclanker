@@ -27,7 +27,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profiles import ProfileVersionRow
-from gaggiclanker.device.fake import FakeDevice, build_fake_device
+from gaggiclanker.device.fake import SYSTEM_PROFILE_IDS, FakeDevice, build_fake_device
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.llm.budget import RateLimitBudget
@@ -62,6 +62,10 @@ def every_profile_fixture() -> list[tuple[str, dict[str, Any]]]:
 @pytest.fixture
 async def fake_device() -> AsyncIterator[FakeDevice]:
     device = build_fake_device(FIXTURES)
+    # The board tests describe the profiles the app manages. Firmware 1.10 also seeds two of its
+    # own (a backflush and a descale), whose handling has tests of its own; leaving them out here
+    # keeps every other test about the profile it names.
+    device.profiles = [p for p in device.profiles if p["id"] not in SYSTEM_PROFILE_IDS]
     await device.start()
     try:
         yield device
