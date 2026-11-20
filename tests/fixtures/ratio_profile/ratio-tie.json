@@ -1,0 +1,34 @@
+{
+  "id": "ratio-2-1",
+  "label": "9 Bar Espresso by ratio 2.5",
+  "type": "standard",
+  "description": "",
+  "temperature": 93,
+  "phases": [
+    {
+      "name": "Pump",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 28,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 9,
+        "flow": 0
+      },
+      "targets": [
+        {
+          "type": "ratio",
+          "operator": "gte",
+          "value": 2.5
+        }
+      ]
+    }
+  ],
+  "dose": 14.5
+}

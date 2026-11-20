@@ -50,7 +50,7 @@ class DeviceModel(BaseModel):
 
 TransitionType = Literal["instant", "linear", "ease-in", "ease-out", "ease-in-out"]
 TransitionTarget = Literal["time", "volumetric", "pumped"]
-TargetType = Literal["volumetric", "pressure", "flow", "pumped"]
+TargetType = Literal["volumetric", "pressure", "flow", "pumped", "ratio"]
 TargetOperator = Literal["gte", "lte"]
 PumpTarget = Literal["pressure", "flow"]
 PhaseKind = Literal["preinfusion", "brew"]
@@ -162,6 +162,14 @@ class Profile(BaseModel):
     type: ProfileType
     description: str = ""
     temperature: float = Field(default=0.0, ge=0, le=150)
+    #: The dose in grams a `ratio` target multiplies (firmware 1.10). The firmware writes
+    #: it on every profile and 0 means none; it is absent on a profile from before 1.10.
+    #: The canonical form treats absent and 0 as the same document.
+    #:
+    #: `SkipJsonSchema` because this model is also an LLM output schema (the draft call)
+    #: and the agent is not asked for a dose: in a strict schema every property is
+    #: required, so it would have to answer one for every profile it drafts.
+    dose: SkipJsonSchema[float | None] = Field(default=None, ge=0, le=100)
     favorite: bool = False
     selected: bool = False
     utility: bool = False
@@ -246,7 +254,8 @@ def canonical_document_json(profile: Profile) -> str:
     that is textually different but behaviourally identical: it always emits a
     `transition` even where the author wrote none, always adds
     `transition.target` (defaulting to `"time"`), always spells out a phase
-    `temperature` of `0`, and stamps its own `id`, `favorite` and `selected`.
+    `temperature` of `0`, writes a `dose` of `0` on every profile (firmware 1.10),
+    and stamps its own `id`, `favorite` and `selected`.
     If any of that reached the hash, every profile would appear to change the
     first time the machine touched it and the archive would fill with phantom
     versions.
@@ -257,7 +266,10 @@ def canonical_document_json(profile: Profile) -> str:
     rather than being part of it; `transition.target` when it is absent or the
     `"time"` default; a `transition` that is only the firmware default; and a
     phase `temperature` of `0`, which is the sentinel for "inherit the profile
-    temperature" and means exactly what leaving it out means.
+    temperature" and means exactly what leaving it out means; and a profile `dose`
+    of `0`, the same sentinel for "no dose". Dropping it is what keeps every version
+    stored before firmware 1.10, and every recorded file hash, as they were: a
+    document with `dose: 0` is the one without it, not an edit made on the machine.
 
     What remains is normalised — integral floats collapsed so `28.0` and `28`
     agree, keys sorted — leaving output that is byte-stable across pydantic and
@@ -277,6 +289,9 @@ def canonical_brew_json(profile: Profile) -> str:
 def _canonical_json(profile: Profile, *, exclude: set[str]) -> str:
     body = profile.model_dump(exclude=exclude, exclude_none=True, mode="json")
     body["phases"] = [_canonical_phase(phase) for phase in body["phases"]]
+    # 0 and absent are the same document: the firmware writes `dose: 0` for "none".
+    if not body.get("dose"):
+        body.pop("dose", None)
     return json.dumps(
         _normalise_numbers(body), sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )

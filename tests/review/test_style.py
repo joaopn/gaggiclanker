@@ -170,3 +170,22 @@ def test_a_verdict_is_stable() -> None:
     first = detect_style(profile, dose_g=18)
     second = detect_style(profile, dose_g=18)
     assert (first.style, first.tier, first.evidence) == (second.style, second.tier, second.evidence)
+
+
+def test_a_ratio_stop_is_a_yield_for_the_allonge_test_only_with_the_profiles_dose() -> None:
+    """Firmware 1.10: a 1:3.9 ratio on an 18 g profile dose is a 70 g target, as a weight is."""
+    profile: dict[str, Any] = {
+        "label": "long and gentle",
+        "phases": [
+            {
+                "name": "brew",
+                "phase": "brew",
+                "duration": 45,
+                "pump": {"target": "pressure", "pressure": 6, "flow": 0},
+                "targets": [{"type": "ratio", "value": 3.9}],
+            }
+        ],
+    }
+    assert detect_style(profile, dose_g=18).style == "dark"
+    assert detect_style({**profile, "dose": 18}, dose_g=18).style == "allonge"
+    assert detect_style({**profile, "dose": 0}, dose_g=18).style == "dark"

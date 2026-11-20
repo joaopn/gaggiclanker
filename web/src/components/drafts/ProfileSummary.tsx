@@ -1,4 +1,5 @@
 import { renderValue } from "@/components/drafts/ProfileDiff";
+import { doseOf, ratioStopWords } from "@/lib/ratioStop";
 
 type Json = Record<string, unknown>;
 
@@ -13,15 +14,38 @@ function hasTransition(transition: unknown): boolean {
  * The stop conditions the firmware acts on, each spelled as the diff spells it. A volumetric
  * target of zero or less is skipped by the firmware (`Phase::isFinished`), so it is not shown.
  */
-function targetsOf(phase: Json): string[] {
+function targetsOf(phase: Json, dose: number | null): string[] {
   if (!Array.isArray(phase.targets)) return [];
   return phase.targets
     .filter((target) => {
       const { type, value } = (target ?? {}) as Json;
-      return !(type === "volumetric" && !(typeof value === "number" && value > 0));
+      return !(
+        (type === "volumetric" || type === "ratio") &&
+        !(typeof value === "number" && value > 0)
+      );
     })
-    .map((target) => renderValue([target]))
+    .map((target) => {
+      const { type, operator, value } = target as Json;
+      return type === "ratio" && typeof value === "number"
+        ? ratioStopWords(operator === "lte" ? "≤" : "≥", value, dose)
+        : renderValue([target]);
+    })
     .filter((text): text is string => text !== null);
+}
+
+/** Whether a phase has a stop on the cup's weight: a volumetric target, or a ratio one with a dose. */
+function stopsOnWeight(phase: Json, dose: number | null): boolean {
+  return (
+    Array.isArray(phase.targets) &&
+    phase.targets.some((target) => {
+      const { type, value } = (target ?? {}) as Json;
+      return (
+        typeof value === "number" &&
+        value > 0 &&
+        (type === "volumetric" || (type === "ratio" && dose !== null))
+      );
+    })
+  );
 }
 
 /** A simple pump is a power percentage (`getPumpValue`); an advanced one names its setpoint. */
@@ -34,7 +58,7 @@ function pumpOf(pump: unknown): string | null {
 /** A phase's length: for a standard profile with a volumetric target, only when volume is unmeasured. */
 function durationOf(profile: Json, phase: Json): string | null {
   if (typeof phase.duration !== "number") return null;
-  const volumetric = targetsOf(phase).some((text) => text.startsWith("volumetric"));
+  const volumetric = stopsOnWeight(phase, doseOf(profile));
   return profile.type === "standard" && volumetric
     ? `${phase.duration} s when volume is not measured`
     : `${phase.duration} s`;
@@ -50,9 +74,9 @@ function durationOf(profile: Json, phase: Json): string | null {
 function shotEnds(profile: Json, phases: Json[]): string {
   const last = phases[phases.length - 1];
   if (last === undefined) return "Shot ends when the last phase ends.";
-  const targets = targetsOf(last);
+  const targets = targetsOf(last, doseOf(profile));
   const after = typeof last.duration === "number" ? `${last.duration} s` : null;
-  const volumetric = targets.some((text) => text.startsWith("volumetric"));
+  const volumetric = stopsOnWeight(last, doseOf(profile));
   const parts = targets.length > 0 ? [targets.join(" or ")] : [];
   if (after !== null) {
     parts.push(
@@ -97,7 +121,7 @@ export function ProfileSummary({ profile }: { profile: Json | null }) {
       </p>
       <ol className="space-y-1">
         {phases.map((phase, index) => {
-          const targets = targetsOf(phase);
+          const targets = targetsOf(phase, doseOf(profile));
           const details = [
             durationOf(profile, phase),
             pumpOf(phase.pump),

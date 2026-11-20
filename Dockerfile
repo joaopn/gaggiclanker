@@ -30,6 +30,7 @@ COPY web/ ./
 # build while every gate outside it is green. Nothing from this stage but
 # dist/ reaches the runtime image.
 COPY tests/fixtures/profiles/ /tests/fixtures/profiles/
+COPY tests/fixtures/ratio_profile/ /tests/fixtures/ratio_profile/
 
 # Type errors do not fail `vite build` (esbuild strips types without checking
 # them), so the check is explicit: an image that compiles but does not type-check

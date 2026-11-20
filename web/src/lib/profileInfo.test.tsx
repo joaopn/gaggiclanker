@@ -4,6 +4,10 @@ import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { endsWhen, profileHeadline } from "@/lib/profileInfo";
 import lever from "../../../tests/fixtures/profiles/docs-cremina-lever.json";
 import medium from "../../../tests/fixtures/profiles/docs-medium-18g.json";
+import ratioInexact from "../../../tests/fixtures/ratio_profile/ratio-2-1.json";
+import ratioWithDose from "../../../tests/fixtures/ratio_profile/ratio-18g.json";
+import ratioNoDose from "../../../tests/fixtures/ratio_profile/ratio-no-dose.json";
+import ratioTie from "../../../tests/fixtures/ratio_profile/ratio-tie.json";
 
 const phase = (duration: number, targets: unknown[] = []) => ({ duration, targets });
 
@@ -88,5 +92,37 @@ describe("the one-line summary and the landed profile summary read the same stop
       if (on) expect(ends).toContain(`${on[1]} ${on[2]} ${on[3]}`);
       if (headline === "no stop condition") expect(ends).not.toMatch(/after \d/);
     }
+  });
+});
+
+describe("a ratio stop (firmware 1.10)", () => {
+  // The server's `profile_recipe` is pinned on the same two files (`test_profile_recipe.py`): 36 g
+  // with the dose, no yield without it.
+  it("is a weight of ratio times dose, and the yield the server states", () => {
+    expect(endsWhen(ratioWithDose)).toBe("target 36 g");
+    expect(profileHeadline(ratioWithDose)).toBe("standard · 1 phase · target 36 g");
+    render(<ProfileSummary profile={ratioWithDose} />);
+    expect(screen.getByTestId("profile-summary-ends")).toHaveTextContent(
+      "Shot ends when the last phase ends: ratio ≥ 2 (36 g with the 18 g dose), or after 28 s when volume is not measured.",
+    );
+    expect(screen.getByTestId("profile-summary-phase")).toHaveTextContent(
+      "ends when ratio ≥ 2 (36 g with the 18 g dose)",
+    );
+  });
+
+  it("rounds an exact tie to the even tenth, as the server does (2.5 x 14.5 is 36.2)", () => {
+    expect(endsWhen(ratioTie)).toBe("target 36.2 g");
+  });
+
+  it("rounds an inexact product to a tenth of a gram, as the server does (2.1 x 18 is 37.8)", () => {
+    expect(endsWhen(ratioInexact)).toBe("target 37.8 g");
+  });
+
+  it("with no dose never stops the shot, and says so", () => {
+    expect(endsWhen(ratioNoDose)).toBe("ratio ≥ 2 — no dose set, so it never stops the shot");
+    render(<ProfileSummary profile={ratioNoDose} />);
+    expect(screen.getByTestId("profile-summary-ends")).toHaveTextContent(
+      "Shot ends when the last phase ends: ratio ≥ 2 — no dose set, so it never stops the shot, or after 28 s.",
+    );
   });
 });

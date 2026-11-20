@@ -36,7 +36,7 @@ from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository, stored_document
+from gaggiclanker.db.repos.profiles import ProfilesRepository, document_for, stored_document
 from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.domain.models import (
     Profile,
@@ -53,6 +53,7 @@ from gaggiclanker.drafts.proposals import (
     DraftTarget,
     PreparedDraft,
     schema_errors,
+    with_the_bases_dose,
 )
 from gaggiclanker.infra.errors import Conflict, NotFound, ServiceUnavailable
 from gaggiclanker.llm.prompts import PromptService, RenderedPrompt
@@ -221,7 +222,7 @@ class ProfileDraftService:
         prepared: PreparedDraft = await self.proposals.prepare(
             base_version_id,
             base,
-            result.data.profile,
+            with_the_bases_dose(await self._given_document(base, parent), result.data.profile),
             new_profile_name=(
                 await self.proposals.editor_name(base_version_id, result.data.profile.label)
                 if parent is None
@@ -324,6 +325,16 @@ class ProfileDraftService:
         if draft is None:
             raise NotFound(f"No profile draft {draft_id}")
         return draft
+
+    async def _given_document(self, base: Profile, parent: ProfileDraftRow | None) -> Profile:
+        """The document the model is asked to change: the draft being refined when there is one
+        (the prompt shows it as the previous draft), else the base version."""
+        if parent is not None and parent.draft_version_id is not None:
+            version = await self.profiles.get_version(parent.draft_version_id)
+            if version is not None and version.profile:
+                named = parent.draft_label or await self.profiles.name_of(version)
+                return document_for(version, named)
+        return base
 
     async def _parent_draft(self, draft_id: int | None) -> ProfileDraftRow | None:
         return None if draft_id is None else await self._require(draft_id)

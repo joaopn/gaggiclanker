@@ -98,6 +98,16 @@ class PolicyBounds:
 
 DEFAULT_BOUNDS = PolicyBounds()
 
+#: A profile's dose is 0 (none) or between these. The firmware's schema allows 1-100 g and
+#: its profile editor 0-100; a dose under a gram is no basket's dose, so it moves to 1.
+#: Not settings-backed: these are the firmware's own limits, not a preference.
+DOSE_MIN_G = 1.0
+DOSE_MAX_G = 100.0
+#: A `ratio` target is the cup over the dose ("1:2" is 2). The firmware only asks for more
+#: than 0 and its editor has no ceiling (`ExtendedPhaseTarget.jsx`, step 0.1); 1:10 is
+#: already a drink with more water than coffee by any espresso measure, so past it is a typo.
+RATIO_MAX = 10.0
+
 #: The registry keys :func:`bounds_from` reads, in the order the Settings page
 #: shows them. Declared here so the registry and this module cannot drift: the
 #: settings entries are generated from nothing, but a key added there and not
@@ -221,10 +231,25 @@ def clamp(
         ),
         changes=changes,
     )
+    dose = profile.dose
+    if dose:
+        # 0 (and absent) is "no dose" and stays so: moving it to the minimum would invent one.
+        dose = _clamp_value(
+            dose,
+            DOSE_MIN_G,
+            DOSE_MAX_G,
+            path="dose",
+            field="dose",
+            reason=f"a dose is 0 (none) or {DOSE_MIN_G:g}-{DOSE_MAX_G:g} g",
+            changes=changes,
+        )
     phases = [
         _clamp_phase(phase, index, bounds, changes) for index, phase in enumerate(profile.phases)
     ]
-    return profile.model_copy(update={"temperature": temperature, "phases": phases}), changes
+    return (
+        profile.model_copy(update={"temperature": temperature, "dose": dose, "phases": phases}),
+        changes,
+    )
 
 
 def _clamp_phase(
@@ -344,9 +369,22 @@ def _clamp_target(
     `volumetric` is grams in the cup and `pumped` is millilitres through the
     pump; neither is a pressure the machine has to reach, so neither has a
     policy ceiling. Clamping a 36 g yield to something would be the policy
-    deciding how much coffee somebody wants.
+    deciding how much coffee somebody wants. A `ratio` is the exception that
+    proves it: it is a multiplier, not a yield, and one past :data:`RATIO_MAX`
+    is a slip of the finger rather than a wish.
     """
     path = f"{where}.targets[{position}]"
+    if target.type == "ratio":
+        value = _clamp_value(
+            target.value,
+            0.0,
+            RATIO_MAX,
+            path=path,
+            field="target.value",
+            reason=f"a ratio stop condition must be at most {RATIO_MAX:g} (1:{RATIO_MAX:g})",
+            changes=changes,
+        )
+        return target.model_copy(update={"value": value})
     if target.type == "pressure":
         value = _clamp_value(
             target.value,
@@ -537,16 +575,17 @@ def _check_target(target: Target, path: str, bounds: PolicyBounds) -> list[Viola
     ceiling = {
         "pressure": bounds.pressure_max_bar,
         "flow": bounds.flow_max_ml_s,
+        "ratio": RATIO_MAX,
     }.get(target.type)
     if ceiling is None or _in_range(target.value, 0.0, ceiling):
         return []
-    unit = "bar" if target.type == "pressure" else "ml/s"
+    unit = {"pressure": " bar", "flow": " ml/s", "ratio": ""}[target.type]
     return [
         Violation(
             path=path,
             field="target.value",
             message=(
-                f"a {target.type} stop condition of {target.value:g} {unit} is above {ceiling:g}"
+                f"a {target.type} stop condition of {target.value:g}{unit} is above {ceiling:g}"
             ),
         )
     ]
@@ -558,7 +597,9 @@ def _check_termination(profile: Profile, bounds: PolicyBounds) -> list[Violation
     Two ways to satisfy this, and either is enough:
 
     * the last brew phase carries a volumetric or pumped stop condition, which
-      is a real end — the cup is full, or the pump has moved its water; or
+      is a real end — the cup is full, or the pump has moved its water; a ratio
+      stop counts as one only when the profile has a dose, since the firmware
+      ignores a ratio it has no dose to multiply; or
     * every phase has a duration inside the policy's ceiling, so the worst case
       is bounded by the clock.
 
@@ -576,7 +617,7 @@ def _check_termination(profile: Profile, bounds: PolicyBounds) -> list[Violation
         return []
     last_brew = _last_brew_phase(profile)
     if last_brew is not None and any(
-        target.type in ("volumetric", "pumped") and target.value > 0 for target in last_brew.targets
+        _ends_the_shot(target, profile) for target in last_brew.targets
     ):
         return []
     return [
@@ -590,6 +631,15 @@ def _check_termination(profile: Profile, bounds: PolicyBounds) -> list[Violation
             ),
         )
     ]
+
+
+def _ends_the_shot(target: Target, profile: Profile) -> bool:
+    if target.value <= 0:
+        return False
+    if target.type == "ratio":
+        # `Phase::isFinished` skips a ratio target while the dose is 0.
+        return bool(profile.dose and profile.dose > 0)
+    return target.type in ("volumetric", "pumped")
 
 
 def _last_brew_phase(profile: Profile) -> Phase | None:

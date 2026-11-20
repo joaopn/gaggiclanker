@@ -77,7 +77,25 @@ __all__ = [
     "PreparedDraft",
     "TakenName",
     "schema_errors",
+    "with_the_bases_dose",
 ]
+
+
+def with_the_bases_dose(source: Profile, drafted: Profile) -> Profile:
+    """A model-written document, carrying the dose of the document it was given when it has none.
+
+    The model's output schema leaves the dose out (the agent is not asked for one), so a whole
+    document it writes is a document with no dose: left so, a draft of a profile that has a dose
+    would drop it, and a ratio stop in it would end nothing. The model's document therefore
+    inherits the dose of ``source``, the document it was asked to change: the base version for a
+    first draft, the draft being refined for a refinement (so a dose a person set in that draft
+    survives, whatever the base had). A profile written from scratch has no source and a
+    document a person supplies (the JSON editor, a duplicate, an import) never passes through
+    here: it keeps exactly what the person gave. A dose the document states, 0 included, stays.
+    """
+    if drafted.dose is not None or not source.dose:
+        return drafted
+    return drafted.model_copy(update={"dose": source.dose})
 
 
 @dataclass(frozen=True, slots=True)

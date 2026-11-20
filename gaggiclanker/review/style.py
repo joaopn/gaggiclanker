@@ -177,7 +177,7 @@ def _from_profile(profile: dict[str, Any], dose_g: float | None) -> StyleVerdict
         )
 
     ceiling = _max_brew_pressure(brew)
-    volumetric = max_volumetric_target_g(phases)
+    volumetric = max_volumetric_target_g(phases, profile.get("dose"))
     if (
         ceiling is not None
         and ceiling <= ALLONGE_MAX_BAR

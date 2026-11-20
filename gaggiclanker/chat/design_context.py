@@ -290,6 +290,9 @@ def _fork_block(fork: ProfileVersionRow | None, fork_name: str) -> list[str]:
     ]
 
 
+_NOT_TOLD_TARGET_TYPES = frozenset({"ratio"})
+
+
 def _document_shape() -> list[str]:
     """The keys of a profile document, for a model writing one with nothing to fork.
 
@@ -302,6 +305,10 @@ def _document_shape() -> list[str]:
     def one_of(kind: Any) -> str:
         return "|".join(get_args(kind))
 
+    # `ratio` (firmware 1.10) multiplies the profile's dose, which the agent is not told
+    # about yet, so a stop condition it could pick but not explain stays out of its text.
+    target_types = "|".join(t for t in get_args(TargetType) if t not in _NOT_TOLD_TARGET_TYPES)
+
     return [
         "The document's keys (the schema's, not values to copy):",
         f"- top level: label, type ({one_of(ProfileType)}), description, temperature (°C), "
@@ -309,7 +316,7 @@ def _document_shape() -> list[str]:
         f"- a phase: name, phase ({one_of(PhaseKind)}), valve (0|1), duration (s), "
         "temperature (0 = the profile's), pump (an integer percent, or "
         f"{{target: {one_of(PumpTarget)}, pressure: bar, flow: ml/s}}), "
-        f"targets ([{{type: {one_of(TargetType)}, operator: {one_of(TargetOperator)}, "
+        f"targets ([{{type: {target_types}, operator: {one_of(TargetOperator)}, "
         "value}]: OR-combined stop conditions), optionally transition "
         f"({{type: {one_of(TransitionType)}, duration: s, adaptive: bool}})",
     ]

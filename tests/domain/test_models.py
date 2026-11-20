@@ -594,6 +594,8 @@ def _as_write_profile(raw: dict[str, Any]) -> dict[str, Any]:
         "type": raw["type"],
         "description": raw.get("description", ""),
         "temperature": as_float(raw.get("temperature", 0)),
+        # Firmware 1.10 writes the dose on every profile, 0 meaning none.
+        "dose": as_float(raw.get("dose", 0)),
         "favorite": True,
         "selected": True,
         "utility": raw.get("utility", False),
@@ -618,6 +620,64 @@ def test_content_hash_survives_the_devices_own_round_trip(name: str) -> None:
     assert returned.id == "aB3xYz90Pq"
     assert document_hash(returned) == document_hash(source)
     assert canonical_document_json(returned) == canonical_document_json(source)
+
+
+# ── dose and the ratio target (firmware 1.10) ────────────────────────
+
+
+def _stored_fixture(name: str, **top_level: Any) -> Profile:
+    return Profile.model_validate(
+        {**json.loads((PROFILE_FIXTURES / name).read_text()), **top_level}
+    )
+
+
+@pytest.mark.parametrize("name", ALL_PROFILE_FIXTURES)
+def test_a_dose_of_zero_is_the_document_stored_before_it_existed(name: str) -> None:
+    """The trap of firmware 1.10: it writes `dose: 0` on every profile.
+
+    Without the canonical form dropping it, every profile on a 1.10 machine would hash
+    differently from the version stored for it and read as edited on the machine.
+    """
+    stored = _DOCUMENT_HASHES_BEFORE_THE_SPLIT[name]
+    assert document_hash(_stored_fixture(name)) == stored
+    for zero in (0, 0.0):
+        written = _stored_fixture(name, dose=zero)
+        assert written.dose == 0
+        assert document_hash(written) == stored
+        assert brew_hash(written) == brew_hash(_stored_fixture(name))
+        assert '"dose"' not in canonical_document_json(written)
+
+
+def test_a_dose_above_zero_is_a_different_document() -> None:
+    """The other half: the zero is noise, a real dose is a change of what is brewed."""
+    name = "firmware-9bar.json"
+    stored = _DOCUMENT_HASHES_BEFORE_THE_SPLIT[name]
+    eighteen = _stored_fixture(name, dose=18)
+    assert document_hash(eighteen) != stored
+    assert brew_hash(eighteen) != brew_hash(_stored_fixture(name))
+    assert '"dose":18' in canonical_document_json(eighteen)
+    assert document_hash(_stored_fixture(name, dose=18.0)) == document_hash(eighteen)
+    assert document_hash(_stored_fixture(name, dose=18.5)) != document_hash(eighteen)
+
+
+def test_a_profile_without_a_dose_is_sent_without_one() -> None:
+    """`to_device` leaves the key out rather than writing a dose nobody chose."""
+    assert "dose" not in _stored_fixture("firmware-9bar.json").to_device()
+    assert _stored_fixture("firmware-9bar.json", dose=18).to_device()["dose"] == 18
+
+
+@pytest.mark.parametrize("dose", [-1, 100.5])
+def test_a_dose_outside_zero_to_one_hundred_is_rejected(dose: float) -> None:
+    with pytest.raises(ValidationError):
+        _stored_fixture("firmware-9bar.json", dose=dose)
+
+
+def test_a_ratio_target_is_a_target() -> None:
+    body = _profile()
+    body["phases"][0]["targets"] = [{"type": "ratio", "operator": "gte", "value": 2}]
+    parsed = Profile.model_validate(body)
+    assert parsed.phases[0].targets[0].type == "ratio"
+    assert parsed.to_device()["phases"][0]["targets"][0]["type"] == "ratio"
 
 
 def test_a_default_transition_hashes_the_same_as_no_transition() -> None:

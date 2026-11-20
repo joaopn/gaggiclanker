@@ -3,6 +3,8 @@
  * what ends the shot. Read from the stored document, never from a request of its own.
  */
 
+import { doseOf, ratioGrams, ratioStopWords } from "@/lib/ratioStop";
+
 type Json = Record<string, unknown>;
 
 type Target = { type: string; operator: string; value: number };
@@ -21,7 +23,7 @@ function targetsOf(profile: Json): Target[] {
 }
 
 /**
- * The line a row shows about the stop. With a volumetric target in any phase it is the profile's
+ * The line a row shows about the stop. With a volumetric target (or a ratio stop and a dose) in any phase it is the profile's
  * **target** ("target 36 g"): the firmware's `getBrewVolume`, the last such target, which is the
  * weight the machine shows and predicts overshoot against. It is not what ends the shot (that is
  * the last phase ending, which the profile summary says), so it is never worded "ends at".
@@ -29,17 +31,23 @@ function targetsOf(profile: Json): Target[] {
  */
 export function endsWhen(profile: Json): string {
   const phases = Array.isArray(profile.phases) ? (profile.phases as Json[]) : [];
+  const dose = doseOf(profile);
   let volume: number | null = null;
   for (const phase of phases) {
     for (const target of targetsOf({ phases: [phase] })) {
-      // Zero or less is skipped by the firmware, as the profile summary skips it.
+      // Zero or less is skipped by the firmware, as the profile summary skips it. A ratio stop is
+      // a weight of ratio × dose, and nothing at all while the profile has no dose.
       if (target.type === "volumetric" && target.value > 0) volume = target.value;
+      if (target.type === "ratio" && target.value > 0 && dose !== null) {
+        volume = ratioGrams(target.value, dose);
+      }
     }
   }
   if (volume !== null) return `target ${volume} g`;
   const last = phases[phases.length - 1];
   if (!last) return "no stop condition";
   const first = targetsOf({ phases: [last] })[0];
+  if (first?.type === "ratio") return ratioStopWords(first.operator, first.value, dose);
   if (first) return `ends on ${first.type} ${first.operator} ${first.value}`;
   return typeof last.duration === "number" && last.duration > 0
     ? `ends after ${last.duration} s`

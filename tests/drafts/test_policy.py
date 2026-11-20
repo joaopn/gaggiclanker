@@ -296,3 +296,70 @@ def test_inverted_bounds_are_reported_rather_than_silently_emptying_the_range() 
     assert clamped.temperature == profile.temperature
     messages = [violation.message for violation in check(clamped, inverted)]
     assert any("inverted" in message for message in messages)
+
+
+# ── firmware 1.10: dose and the ratio target ─────────────────────────
+
+
+def _with_ratio(*, dose: float | None, ratio: float = 2.0, duration: float = 300) -> dict[str, Any]:
+    """The 9 bar profile with a ratio stop where its weight stop was, and a phase that only the
+    stop can end (300 s is past the policy's ceiling)."""
+    document = profile_fixture("firmware-9bar")
+    document["phases"][0]["duration"] = duration
+    document["phases"][0]["targets"] = [{"type": "ratio", "operator": "gte", "value": ratio}]
+    if dose is not None:
+        document["dose"] = dose
+    return document
+
+
+@pytest.mark.parametrize("dose", [None, 0])
+def test_a_ratio_stop_with_no_dose_ends_nothing(dose: float | None) -> None:
+    """The firmware skips a ratio target while the dose is 0 (`Phase::isFinished`)."""
+    violations = check(Profile.model_validate(_with_ratio(dose=dose)))
+    assert [violation.field for violation in violations] == ["duration", "targets"]
+    assert "nothing ends this profile" in violations[1].message
+
+
+def test_a_ratio_stop_with_a_dose_ends_the_profile() -> None:
+    """The other half: the same document with a dose is refused for its duration only."""
+    violations = check(Profile.model_validate(_with_ratio(dose=18)))
+    assert [violation.field for violation in violations] == ["duration"]
+
+
+def test_a_ratio_of_zero_ends_nothing_even_with_a_dose() -> None:
+    violations = check(Profile.model_validate(_with_ratio(dose=18, ratio=0)))
+    assert [violation.field for violation in violations] == ["duration", "targets"]
+
+
+def test_a_dose_under_a_gram_moves_to_one_and_the_move_is_reported() -> None:
+    clamped, changes = clamp(Profile.model_validate(_with_ratio(dose=0.5, duration=28)))
+    assert clamped.dose == 1.0
+    assert [(c.path, c.before, c.after) for c in changes] == [("dose", 0.5, 1.0)]
+
+
+@pytest.mark.parametrize("dose", [None, 0, 1, 18, 100])
+def test_a_dose_of_none_or_one_to_a_hundred_is_left_alone(dose: float | None) -> None:
+    clamped, changes = clamp(Profile.model_validate(_with_ratio(dose=dose, duration=28)))
+    assert clamped.dose == dose
+    assert changes == []
+
+
+def test_a_ratio_past_one_to_ten_is_clamped_and_a_checked_one_is_refused() -> None:
+    profile = Profile.model_validate(_with_ratio(dose=18, ratio=12, duration=28))
+    clamped, changes = clamp(profile)
+    assert clamped.phases[0].targets[0].value == 10.0
+    assert [(c.path, c.before, c.after) for c in changes] == [("phases[0].targets[0]", 12, 10.0)]
+    assert [v.path for v in check(profile)] == ["phases[0].targets[0]"]
+    assert check(clamped) == []
+
+
+def test_a_sane_ratio_is_not_moved() -> None:
+    profile = Profile.model_validate(_with_ratio(dose=18, ratio=2.5, duration=28))
+    assert clamp(profile)[1] == []
+    assert check(profile) == []
+
+
+def test_enforce_lets_the_clamp_bound_a_phase_whose_ratio_stop_has_no_dose() -> None:
+    """`enforce` clamps the 300 s phase first, so the clock ends the profile and it is allowed:
+    the termination rule is about a profile the clamp cannot bound, as for any other target."""
+    enforce(Profile.model_validate(_with_ratio(dose=None)))

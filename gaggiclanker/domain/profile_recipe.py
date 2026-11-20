@@ -2,8 +2,9 @@
 
 A GaggiMate profile carries two numbers a person would otherwise type into a
 Recipe's recipe: the brew temperature, and — when a phase stops on the scale — the
-weight in the cup. Picking a profile for a new Recipe fills those in, and the style
-detector reads the same yield to tell an allongé from a short low-pressure shot.
+weight in the cup (a ratio target counts as the dose times its ratio). Picking a profile
+for a new Recipe fills those in, and the style detector reads the same yield to tell an
+allongé from a short low-pressure shot.
 Both read it through here, so "what yield does this profile aim for" has one
 answer rather than two that could drift.
 
@@ -35,7 +36,7 @@ def _number(value: Any) -> float | None:
     return float(value)
 
 
-def max_volumetric_target_g(phases: Iterable[Any]) -> float | None:
+def max_volumetric_target_g(phases: Iterable[Any], dose: Any = None) -> float | None:
     """The largest `volumetric` stop condition across the phases, in grams.
 
     The largest rather than the last: a lever or a blooming profile stops each
@@ -44,17 +45,28 @@ def max_volumetric_target_g(phases: Iterable[Any]) -> float | None:
     water through the pump, not coffee in the cup, and are not a yield. A target
     of 0 is no target, so a profile whose only volumetric stops are 0 answers
     ``None`` rather than "a 0 g shot".
+
+    A `ratio` target (firmware 1.10) is a volumetric one everywhere in the firmware:
+    it fires on volume over the profile's dose, so it is ``ratio * dose`` grams (to a tenth), and
+    only when ``dose`` is above 0 (the firmware ignores a ratio with no dose).
     """
+    dose_g = _number(dose)
     values: list[float] = []
     for phase in phases:
         if not isinstance(phase, Mapping):
             continue
         for target in phase.get("targets") or []:
-            if not isinstance(target, Mapping) or str(target.get("type", "")) != "volumetric":
+            if not isinstance(target, Mapping):
                 continue
+            kind = str(target.get("type", ""))
             value = _number(target.get("value"))
-            if value is not None and value > 0:
+            if value is None or value <= 0:
+                continue
+            if kind == "volumetric":
                 values.append(value)
+            elif kind == "ratio" and dose_g is not None and dose_g > 0:
+                # To a tenth of a gram, as the Profiles page shows it.
+                values.append(round(value * dose_g, 1))
     return max(values) if values else None
 
 
@@ -71,5 +83,7 @@ def profile_recipe(profile: Mapping[str, Any] | None) -> ProfileRecipe:
     phases = profile.get("phases")
     return ProfileRecipe(
         temperature_c=temperature if temperature is not None and temperature > 0 else None,
-        target_yield_g=max_volumetric_target_g(phases if isinstance(phases, list) else []),
+        target_yield_g=max_volumetric_target_g(
+            phases if isinstance(phases, list) else [], profile.get("dose")
+        ),
     )
