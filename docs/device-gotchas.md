@@ -164,6 +164,29 @@ All read from the v1.10.0 source (`shot_log_format.h`, `profile.h`, `ProfileMana
   version 6** (`reserved0 == 26` and `fieldsMask == 0x1FFF`: 26-byte samples whose `t` is the
   2-byte tick count of v1 to v5, not milliseconds); this codec reads it by the same rule
   (`shotLogHasElapsedTimestamp`) and never writes it. Exit reason 9 is a **ratio target**.
+* **A version 8 weight is a scale's only where `si` bit `0x0100` says so.** `v` and `vf` hold the
+  *active* weight: with no physical scale that is the flow estimator's value (`vf` the puck flow),
+  and a scale that stops reporting mid-shot hands over to the estimator, which carries on from the
+  last reading plus an offset (`Controller::onVolumetricMeasurement`,
+  `ShotHistoryPlugin::selectWeightFlow`). The header's `finalWeight` is the highest spike-filtered
+  active weight, so it is the estimate too when no scale answered. The machine's own analyzer reads
+  `0x0100` the same way. This app reads a v8 sample's weight and weight flow as **absent** (never
+  zero: a zero is a reading) unless it has the bit, counts the header weight only when some *brew* sample
+  had it (the extended recording after the stop, `si` bit `0x0010`, runs with the pump off: a scale
+  that comes up only there did not weigh the brew, and the shot has no weights at all), and reads
+  `scale_connected` from it, from the stored rows, instead of `0x0004`. The estimated weight `ev` is its
+  own column and stays. Version 7 and older are read as they always were. A scale lost before the
+  end of the brew (the last brew sample that holds a weight lacks the bit while an earlier one has
+  it; the extended recording is not judged) leaves the header at the peak including the estimate, so that shot has no final weight
+  either, while its earlier weights stay and it still counts as having a scale. A scale that
+  comes up part-way through the brew with coffee already in the cup (its first reading is half a
+  gram or more) leaves no baseline: the cup's first drip is absent, and a phase's cup gain is
+  absent when no weight was recorded at its start (never counted from zero). A first reading under
+  half a gram is a baseline whenever the scale first answered. The index entry
+  copies the header's `finalWeight` into its `volume` and a dose out typed on the notes card
+  replaces it (`updateIndexMetadata`), so where the header is the estimate the stored index volume
+  is kept only when it differs from the header's weight in the firmware's tenths of a gram (and is
+  absent when the header weight cannot be read at all).
 * **Profiles carry a `dose`**, written on every profile (`0` is none; the schema says 1-100),
   and a **`ratio` target type**: it fires on `volume / dose`, is skipped while the dose is 0
   (`Phase::isFinished`), and counts as volumetric everywhere else (`hasVolumetricTarget`,
