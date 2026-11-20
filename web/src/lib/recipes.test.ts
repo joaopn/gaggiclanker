@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  archiveAsks,
+  archiveWords,
   beanFieldSuggestions,
   beanScaleLabels,
   evidenceSideSummary,
   grindPatch,
   labelSummary,
+  profileLeaving,
   recipeSummary,
   versionRatio,
   versionSummary,
@@ -151,5 +154,33 @@ describe("evidenceSideSummary", () => {
     );
     expect(evidenceSideSummary({ ...side, shots: 1, neutral: 1 })).toBe("1 shot · 1 Neutral");
     expect(evidenceSideSummary(side)).not.toContain("Discarded");
+  });
+});
+
+describe("Archive and the machine's own profiles", () => {
+  const standing = (over: Partial<NonNullable<Parameters<typeof profileLeaving>[0]>> = {}) => ({
+    machine_name: "[Utility] Backflush",
+    on_machine: true,
+    selected: false,
+    kept_by_machine: false,
+    ...over,
+  });
+
+  it("takes an ordinary profile off the machine and asks first", () => {
+    expect(profileLeaving(standing())).toBe(true);
+    expect(archiveAsks({ pins: [], profile: standing() })).toBe(true);
+    expect(archiveWords([], standing())).toContain('takes "[Utility] Backflush" off the machine');
+  });
+
+  it("never says one the machine keeps goes, and says it stays", () => {
+    const kept = standing({ kept_by_machine: true });
+    expect(profileLeaving(kept)).toBe(false);
+    expect(archiveAsks({ pins: [], profile: kept })).toBe(false);
+    const pin = { name: "Pin v1.2" } as never;
+    const words = archiveWords([pin], kept);
+    expect(words).not.toContain('"[Utility] Backflush" off the machine');
+    expect(words).toContain(
+      '"[Utility] Backflush" stays on the machine: it is kept by the machine.',
+    );
   });
 });

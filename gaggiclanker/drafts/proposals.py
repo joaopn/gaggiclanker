@@ -149,6 +149,24 @@ class PinFrozen(Conflict):
         super().__init__(sentence, code="PIN_FROZEN")
 
 
+class ProfileIsSystem(Conflict):
+    """A change that would take one of the machine's own profiles (backflush, descale) off it.
+
+    The firmware seeds them on every boot and refuses to delete them, so the list keeps them on
+    the machine and says so (the sentence is the person's).
+    """
+
+    def __init__(self, sentence: str) -> None:
+        super().__init__(sentence, code="PROFILE_IS_SYSTEM")
+
+
+class StarLimitReached(Conflict):
+    """A star that would be the eleventh: the machine shows at most ten."""
+
+    def __init__(self, sentence: str) -> None:
+        super().__init__(sentence, code="STAR_LIMIT")
+
+
 class PinnedCopyName(Conflict):
     """A draft's document is the copy of a pin, which belongs to that pin's Recipe version for ever.
 

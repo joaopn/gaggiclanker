@@ -138,7 +138,7 @@ async def test_the_selected_profile_stays_when_nothing_else_is_on(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, fake = adopted
-    rows = (await get_board(client))["rows"]
+    rows = [r for r in (await get_board(client))["rows"] if not r["kept_by_machine"]]
     keep = rows[0]
     fake.selected_profile_id = keep["machine"]["device_id"]
     for r in rows:
@@ -150,7 +150,8 @@ async def test_the_selected_profile_stays_when_nothing_else_is_on(
     assert "no other profile" in leave[0]["detail"]
     await pull(app)
 
-    assert ids(fake) == [keep["machine"]["device_id"]]
+    # The machine's own profiles are never switched off, so they are still there beside it.
+    assert ids(fake) == [keep["machine"]["device_id"], "flush", "descale"]
 
 
 async def test_a_recipe_brewing_a_profile_is_served_and_does_not_block_switching_it_off(

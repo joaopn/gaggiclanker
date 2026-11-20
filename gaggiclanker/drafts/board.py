@@ -96,16 +96,25 @@ from gaggiclanker.domain.profile_policy import (
     enforce,
     outside_bounds_sentence,
 )
+from gaggiclanker.domain.system_profiles import (
+    MAX_STARRED,
+    STAR_LIMIT_SENTENCE,
+    is_system_profile,
+    kept_by_machine_sentence,
+)
 from gaggiclanker.drafts.board_plan import (
     ANOTHER_ROW,
     CONFLICT,
+    STAR_LIMIT,
     BoardAction,
     BoardPlan,
     Computed,
     DeletedPlan,
     PlanBuilder,
     RowPlan,
+    counted_on,
     judge_file,
+    starred_on_machine,
 )
 from gaggiclanker.drafts.board_versions import (
     ActiveVersion,
@@ -120,6 +129,7 @@ from gaggiclanker.drafts.board_versions import (
 from gaggiclanker.drafts.live_lineage import LiveLineage
 from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
+    KEPT_BY_MACHINE,
     NO_SUCCESSOR,
     FileContent,
     MachineState,
@@ -134,6 +144,8 @@ from gaggiclanker.drafts.proposals import (
     DraftProposals,
     PinFrozen,
     PinnedCopyName,
+    ProfileIsSystem,
+    StarLimitReached,
     TakenName,
     schema_errors,
 )
@@ -173,6 +185,10 @@ EVENT_FAILED = "board_failed"
 EVENT_PAUSED = "board_paused"
 #: A profile took the name somebody gave its file at the machine (old and new name, row id).
 EVENT_RENAMED_ON_MACHINE = "profile_renamed_on_machine"
+
+#: What the firmware answers a `req:profiles:favorite` past its ten stars with
+#: (`WebSocketHandler.cpp`), compared in lower case.
+FAVORITE_LIMIT_TEXT = "favorite limit reached"
 
 #: Three failed profiles in a row mean the machine has gone, not that three profiles are bad.
 MAX_CONSECUTIVE_FAILURES = 3
@@ -295,6 +311,9 @@ class BoardRowView(BaseModel):
     #: The two independent flags, repeated from ``row`` under the names the page uses.
     on_machine: bool = True
     starred: bool = True
+    #: One of the machine's own profiles (backflush, descale): the firmware seeds it at every boot
+    #: and refuses to delete it, so it is always on the machine and its switch cannot change.
+    kept_by_machine: bool = False
     #: The active version, summarised.
     active_version: ActiveVersion
     #: The profile's Recipe (a profile has at most one, and archived Recipes do not count): changing
@@ -604,9 +623,13 @@ class BoardService:
                     type=plan.version.type,
                     utility=plan.version.utility,
                     machine=_machine_state(plan, machine),
-                    planned=[a for a in would_do if a.row_id == plan.row.id],
+                    # A star past the tenth is a line of its own: nothing is written for it, so
+                    # it is not among the actions, but the row says what the sync leaves.
+                    planned=[a for a in would_do if a.row_id == plan.row.id]
+                    + ([plan.star_left] if plan.star_left is not None else []),
                     on_machine=plan.row.on_machine,
                     starred=plan.row.on_home_screen,
+                    kept_by_machine=is_system_profile(plan.row.device_profile_id),
                     active_version=ActiveVersion(
                         version_id=plan.version.id,
                         short_hash=short_hash(plan.version.content_hash),
@@ -1598,8 +1621,14 @@ class BoardService:
         return await self.writes.saved_with_content(device_id, host=host, content_hash=content_hash)
 
     async def recipe_on_machine(self, row_id: int, on: bool) -> BoardRow:
-        """Switch a profile on or off the machine. The next sync follows; nothing is sent now."""
+        """Switch a profile on or off the machine. The next sync follows; nothing is sent now.
+
+        One of the machine's own profiles (the backflush and descale the firmware seeds) is refused
+        when switched off: the machine keeps it, and a sync could not remove it.
+        """
         row = await self._live_row(row_id)
+        if not on and is_system_profile(row.device_profile_id):
+            raise ProfileIsSystem(kept_by_machine_sentence(row.label))
         await self._refuse_if_pinned(row)
         updated = await self.board.update(row.id, BoardRowPatch(on_machine=on))
         assert updated is not None
@@ -1732,8 +1761,22 @@ class BoardService:
         return updated
 
     async def set_home_screen(self, row_id: int, on: bool) -> BoardRow:
-        row = await self._live_row(row_id)
-        updated = await self.board.update(row.id, BoardRowPatch(on_home_screen=on))
+        """Star a profile or take its star off.
+
+        The machine shows at most ten starred profiles (firmware 1.10 refuses an eleventh), so a
+        star that would be the eleventh is refused with the limit named: counted over the profiles
+        that are on the machine and starred, the count the sync stars by. A star already set is
+        not a new one.
+        """
+        async with self.db.transaction():
+            row = await self._live_row(row_id)
+            if on and not row.on_home_screen:
+                others = starred_on_machine(
+                    [counted_on(r) for r in await self.board.list_rows() if r.id != row.id]
+                )
+                if len(others) >= MAX_STARRED:
+                    raise StarLimitReached(STAR_LIMIT_SENTENCE)
+            updated = await self.board.update(row.id, BoardRowPatch(on_home_screen=on))
         assert updated is not None
         return updated
 
@@ -1838,6 +1881,11 @@ class BoardService:
             return
         await self._join(phase, computed)
         await self._take_names(phase, computed)
+        # The machine's own profiles are on it whatever their switch said (an earlier sync's
+        # leftover): the plan has counted them on, and the list now says so too.
+        for plan in computed.rows:
+            if plan.kept_on:
+                await self.board.update(plan.row.id, BoardRowPatch(on_machine=True))
         phase.held = {p.row.id: p.held for p in computed.rows if p.held is not None}
 
         # Profiles that are on first (their saves), then the ones switched off, then the deleted
@@ -1864,12 +1912,19 @@ class BoardService:
             phase.machine = machine
             computed = await self.plans.compute(machine, host=phase.host)
         for plan in computed.rows:
-            if (
-                plan.home is not None
-                and plan.home.device_id is not None
-                and plan.row.id not in phase.fresh
-            ):
-                await self._apply_home(phase, plan.home)
+            if plan.star_left is not None:
+                await self._report(phase, plan.star_left)
+        # Stars come off before any goes on: a machine at its limit of ten has room for one more
+        # only once another has been unstarred, whatever order the list is in.
+        homes = [
+            plan.home
+            for plan in computed.rows
+            if plan.home is not None
+            and plan.home.device_id is not None
+            and plan.row.id not in phase.fresh
+        ]
+        for action in sorted(homes, key=lambda a: bool(a.on)):
+            await self._apply_home(phase, action)
         await self.board.settle_resume()
 
     # ── a name given at the machine ──────────────────────────────────
@@ -2174,6 +2229,10 @@ class BoardService:
                 return  # the file stays as it was, and the row stands where it was
             new_id = placed.device_id
             phase.held[row.id] = new_id
+        if new_id is None and is_system_profile(row.device_profile_id):
+            # One of the machine's own that is not on it just now: nothing to save (a new file
+            # would not carry the fixed id) and the firmware seeds it again at its next boot.
+            return
         assert new_id is not None  # a row either holds its content or has just pushed it
 
         if (
@@ -2274,7 +2333,7 @@ class BoardService:
         await self._event(
             phase,
             EVENT_LEFT,
-            f"{action.label}: {action.detail}.",
+            f"{action.label}: {action.detail}" + ("" if action.detail.endswith(".") else "."),
             action.device_id,
             {"row_id": action.row_id, "reason": action.reason},
         )
@@ -2731,6 +2790,21 @@ class BoardService:
             else:
                 await phase.client.unfavorite_profile(device_id)
         except DeviceError as exc:
+            if action.on and FAVORITE_LIMIT_TEXT in str(exc).lower():
+                # The machine is at its ten (a star it holds that the list does not count, or
+                # a profile it shows that this list has not seen): nothing is wrong with the
+                # machine, so this is said, not counted toward the stop after three failures.
+                await self._report(
+                    phase,
+                    action.model_copy(
+                        update={
+                            "kind": "report",
+                            "reason": STAR_LIMIT,
+                            "detail": STAR_LIMIT_SENTENCE,
+                        }
+                    ),
+                )
+                return
             await self._row_failed(phase, action, "home_screen", str(exc), device_id=device_id)
             return
         phase.summary.writes += 1
@@ -2972,6 +3046,7 @@ def _is_asked_again(removal: Removal) -> bool:
         ANOTHER_ROW,
         NO_SUCCESSOR,
         CHANGED_SINCE,
+        KEPT_BY_MACHINE,
     ) or removal.reason.startswith("switched back on")
 
 

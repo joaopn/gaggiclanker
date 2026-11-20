@@ -38,10 +38,12 @@ from gaggiclanker.domain.models import (
     canonical_document_json,
     document_hash,
 )
+from gaggiclanker.domain.system_profiles import is_system_profile
 
 __all__ = [
     "CHANGED_SINCE",
     "GONE",
+    "KEPT_BY_MACHINE",
     "NO_SUCCESSOR",
     "FileContent",
     "MachineState",
@@ -62,6 +64,9 @@ CHANGED_SINCE = "changed on the display since"
 #: naming a file that is gone, and no other profile is there to take the selection.
 NO_SUCCESSOR = "selected on the machine and no other profile is on the machine to select instead"
 GONE = "no longer on the machine"
+#: Why one of the machine's own profiles (backflush, descale) is never removed: the firmware
+#: seeds it at every boot and refuses to delete it, so a delete could only fail.
+KEPT_BY_MACHINE = "the machine keeps its own copy of this profile"
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,8 +326,11 @@ async def remove_profile(
     6. the delete, through the client's own guard, which checks the content once more.
 
     Any refusal or failure at 1 to 6, the write gate's included, leaves the profile where
-    it is and says why.
+    it is and says why. One of the machine's own profiles (`is_system_profile`) is refused before
+    anything is read or sent.
     """
+    if is_system_profile(device_id):
+        return Removal(reason=KEPT_BY_MACHINE)
     refusal, fresh = await _check(
         client,
         device_id=device_id,

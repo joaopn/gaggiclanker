@@ -47,7 +47,15 @@ file with the same content is a profile of its own.
 profile that is on (list order, never a utility profile) first, then removes it; with no other
 profile on the machine it stays, and the plan says why.
 
-**Starred** is applied only while a profile is on the machine, and remembered while it is off.
+**Starred** is applied only while a profile is on the machine, and remembered while it is off. The
+machine shows at most ten (firmware 1.10 refuses an eleventh): the first ten starred profiles in
+list order are starred, and any further one is left unstarred and reported, never sent.
+
+**The machine's own profiles** (the backflush and descale that firmware 1.10 seeds on every boot,
+:mod:`gaggiclanker.domain.system_profiles`) are always on the machine: the plan counts them on
+whatever their row says (the sync then stores it), never plans a removal for them (the firmware
+refuses one), and never makes a new file for one that is missing (the machine seeds it again at its
+next boot, under the id the row already holds).
 
 **A machine that looks reset pauses the phase**: when profiles were on the machine at the last
 sync and none of their files is there now, nothing is pushed or removed until a person resumes
@@ -69,7 +77,12 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.recipes import RecipesRepository
 from gaggiclanker.domain.machine_names import is_app_name, machine_name, name_taken_from
 from gaggiclanker.domain.models import Profile, document_hash
-from gaggiclanker.drafts.machine import NO_SUCCESSOR, FileContent, MachineState
+from gaggiclanker.domain.system_profiles import (
+    MAX_STARRED,
+    STAR_LIMIT_SENTENCE,
+    is_system_profile,
+)
+from gaggiclanker.drafts.machine import KEPT_BY_MACHINE, NO_SUCCESSOR, FileContent, MachineState
 from gaggiclanker.drafts.taken_names import TakenNames
 
 __all__ = [
@@ -77,8 +90,10 @@ __all__ = [
     "CONFLICT",
     "EDITED",
     "FINAL_REFUSALS",
+    "KEPT_BY_MACHINE",
     "NO_SUCCESSOR",
     "RESET_REASON",
+    "STAR_LIMIT",
     "BoardAction",
     "BoardPlan",
     "DeletedPlan",
@@ -87,7 +102,9 @@ __all__ = [
     "PolicyCheck",
     "RowPlan",
     "becomes_at_next_sync",
+    "counted_on",
     "judge_file",
+    "starred_on_machine",
 ]
 
 type ActionKind = Literal["adopt", "push", "remove", "leave", "home_screen", "report"]
@@ -107,6 +124,9 @@ def becomes_at_next_sync(name: str) -> str:
     """What a push that only saves the profile's machine name over its file says it will do."""
     return f"Becomes {name} on the machine at the next sync"
 
+
+#: The ``reason`` of the report that says a starred profile is left unstarred, past the tenth.
+STAR_LIMIT = "star_limit"
 
 #: Why nothing is done for a profile in conflict.
 CONFLICT = (
@@ -195,6 +215,12 @@ class RowPlan:
     #: Something to say that is not a write (see ``report`` above).
     report: BoardAction | None = None
     home: BoardAction | None = None
+    #: The row says starred and is past the tenth such profile, which the machine would refuse:
+    #: said when the sync runs, never sent. (Not a report: the profile's own state stays as it is.)
+    star_left: BoardAction | None = None
+    #: The row is one of the machine's own and its switch said off: the plan counts it on, and the
+    #: sync stores that.
+    kept_on: bool = False
     #: The standing file holds something other than what was recorded for it: the executor
     #: records that content as a version of this profile before it does anything else.
     edited_file: str | None = None
@@ -402,7 +428,15 @@ class PlanBuilder:
         into the list by the same rules as every later one and then writes nothing."""
         adoption = await self.board.adoption()
         rows = await self.board.list_rows(include_deleted=True)
-        live = [row for row in rows if row.deleted_at is None]
+        live = [counted_on(row) for row in rows if row.deleted_at is None]
+        # The system rows whose switch says off: counted on here, and stored on by the sync.
+        switched = {
+            row.id
+            for row in rows
+            if row.deleted_at is None
+            and is_system_profile(row.device_profile_id)
+            and not row.on_machine
+        }
         if adoption is None and not assume_adopted:
             return Computed(
                 adopted=False,
@@ -463,6 +497,7 @@ class PlanBuilder:
                 version=current,
                 machine_name=machine_name(row.label, version_labels.get(row.id)),
                 derived_name=machine_name(row.label, version_labels.get(row.id)),
+                kept_on=row.id in switched,
             )
             by_row[row.id] = plan
             computed.rows.append(plan)
@@ -564,6 +599,10 @@ class PlanBuilder:
                 )
             )
 
+        # The machine shows ten stars at most: the first ten in list order, however the rest are
+        # worked out below, and the others are said to be left.
+        over = {row.id for row in starred_on_machine(live)[MAX_STARRED:]}
+
         # Switched on first (pushes before any removal), then switched off.
         for plan in computed.rows:
             if (
@@ -573,7 +612,7 @@ class PlanBuilder:
                 or not plan.row.on_machine
             ):
                 continue
-            await self._plan_on(plan, machine, docs, host, live_claims)
+            await self._plan_on(plan, machine, docs, host, live_claims, over)
         for plan in computed.rows:
             if (
                 plan.report is not None
@@ -628,11 +667,20 @@ class PlanBuilder:
         docs: dict[str, str],
         host: str,
         live_claims: dict[str, set[int]],
+        over: set[int],
     ) -> None:
         """A profile that is on: push its active version when the machine lacks it."""
         row, current = plan.row, plan.version
         old_id = row.device_profile_id
         old = machine.profiles.get(old_id) if old_id else None
+        if old is None and is_system_profile(old_id):
+            # One of the machine's own that is not on it just now: a new file would get an id of
+            # its own, not the fixed one, and the firmware seeds it again at its next boot.
+            return
+        if row.id in over:
+            # Before the reports below, which end the planning of the row: a profile refused by
+            # the policy or not tried again still holds a star the machine has no room for.
+            self._plan_star(plan, old_id, old, over)
         held = plan.held
         if held is None and row.failed_version_id == row.current_version_id:
             plan.report = _report(
@@ -661,14 +709,41 @@ class PlanBuilder:
                 device_id=old_id if old is not None else None,
                 detail=becomes_at_next_sync(plan.machine_name) if renamed else "",
             )
+        if row.id not in over:
+            self._plan_star(plan, old_id, old, over)
+
+    def _plan_star(
+        self, plan: RowPlan, old_id: str | None, old: Profile | None, over: set[int]
+    ) -> None:
+        """The star of a row that is on: judged against its file as it is.
+
+        A star past the tenth is not applied, and one its file already has on the machine comes
+        off, so the machine holds the first ten: a full machine swaps in one sync, since stars
+        come off before any goes on.
+        """
+        row = plan.row
+        wanted = self._wants_star(row, over)
+        if row.id in over:
+            plan.star_left = BoardAction(
+                kind="report",
+                row_id=row.id,
+                label=row.label,
+                device_id=old_id,
+                reason=STAR_LIMIT,
+                detail=STAR_LIMIT_SENTENCE,
+            )
         if old_id is not None and old is not None:
             # A save over its own file keeps the star where it was (the firmware stars only a
             # file it creates), so the star is judged against the file as it is.
-            if old.favorite != row.on_home_screen:
-                plan.home = _home(row, row.label, old_id, row.on_home_screen)
-        elif not row.on_home_screen:
+            if old.favorite != wanted:
+                plan.home = _home(row, row.label, old_id, wanted)
+        elif not wanted:
             # The firmware stars every profile it saves; the list says this one is not starred.
             plan.home = _home(row, row.label, None, False)
+
+    def _wants_star(self, row: BoardRow, over: set[int]) -> bool:
+        """Whether the machine is to hold this row's star: it is starred, and not past the tenth."""
+        return row.on_home_screen and row.id not in over
 
     async def _plan_off(
         self,
@@ -725,7 +800,9 @@ def _removal(
     delete; the guards there have the last word.
     """
     refusal: str | None = None
-    if standing_rows:
+    if is_system_profile(device_id):
+        refusal = KEPT_BY_MACHINE
+    elif standing_rows:
         refusal = ANOTHER_ROW
     elif selected_without_successor:
         refusal = NO_SUCCESSOR
@@ -739,9 +816,30 @@ def _removal(
     )
 
 
+def counted_on(row: BoardRow) -> BoardRow:
+    """The row as the plan counts it: one of the machine's own profiles is on the machine whatever
+    its switch says (the firmware seeds it again at every boot and refuses to delete it)."""
+    if is_system_profile(row.device_profile_id) and not row.on_machine:
+        return row.model_copy(update={"on_machine": True})
+    return row
+
+
+def starred_on_machine(rows: list[BoardRow]) -> list[BoardRow]:
+    """The profiles that are on the machine and starred, in list order: the ones a sync would
+    star, and the count a new star is refused against. ``rows`` are live rows as the plan counts
+    them (see :func:`counted_on`)."""
+    return [row for row in rows if row.on_machine and row.on_home_screen]
+
+
 def looks_reset(live: list[BoardRow], machine: MachineState) -> bool:
     """Whether none of the files the last sync left (any profile's) is on the machine any more."""
-    standing = [r.device_profile_id for r in live if r.device_profile_id]
+    # The machine's own profiles come back under the same ids at every boot, so a wiped machine
+    # still holds them and they say nothing about whether it was reset.
+    standing = [
+        r.device_profile_id
+        for r in live
+        if r.device_profile_id and not is_system_profile(r.device_profile_id)
+    ]
     if not standing:
         return False
     return all(i not in machine.profiles and i not in machine.unreadable for i in standing)

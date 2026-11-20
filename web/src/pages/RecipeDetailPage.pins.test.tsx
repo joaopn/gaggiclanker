@@ -808,7 +808,12 @@ describe("Archive", () => {
     getRecipe.mockResolvedValue(
       pinnedDetail({
         pins: [],
-        profile: { machine_name: "Huila Blooming v5", on_machine: true, selected: false },
+        profile: {
+          machine_name: "Huila Blooming v5",
+          on_machine: true,
+          selected: false,
+          kept_by_machine: false,
+        },
       }),
     );
     const user = setupUser();
@@ -843,7 +848,12 @@ describe("Archive", () => {
       getRecipe.mockResolvedValue(
         pinnedDetail({
           pins,
-          profile: { machine_name: "Huila Blooming v5", on_machine: true, selected: false },
+          profile: {
+            machine_name: "Huila Blooming v5",
+            on_machine: true,
+            selected: false,
+            kept_by_machine: false,
+          },
         }),
       );
       const user = setupUser();
@@ -859,7 +869,12 @@ describe("Archive", () => {
     getRecipe.mockResolvedValue(
       pinnedDetail({
         pins: [recipePin({ pin_id: 6, name: "Huila Blooming v3" })],
-        profile: { machine_name: "Huila Blooming v5", on_machine: false, selected: true },
+        profile: {
+          machine_name: "Huila Blooming v5",
+          on_machine: false,
+          selected: true,
+          kept_by_machine: false,
+        },
       }),
     );
     const user = setupUser();
@@ -878,7 +893,12 @@ describe("Archive", () => {
     getRecipe.mockResolvedValue(
       pinnedDetail({
         pins: [],
-        profile: { machine_name: "Huila Blooming v5", on_machine: true, selected: true },
+        profile: {
+          machine_name: "Huila Blooming v5",
+          on_machine: true,
+          selected: true,
+          kept_by_machine: false,
+        },
       }),
     );
     const user = setupUser();
@@ -893,7 +913,12 @@ describe("Archive", () => {
     getRecipe.mockResolvedValue(
       pinnedDetail({
         pins: [],
-        profile: { machine_name: "Huila Blooming v5", on_machine: false, selected: false },
+        profile: {
+          machine_name: "Huila Blooming v5",
+          on_machine: false,
+          selected: false,
+          kept_by_machine: false,
+        },
       }),
     );
     const user = setupUser();

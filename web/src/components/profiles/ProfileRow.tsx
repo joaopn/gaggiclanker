@@ -24,7 +24,9 @@ type Json = Record<string, unknown>;
  *
  * The left side opens the row's dropdown (a button, so a keyboard gets it); the two switches
  * sit beside it and wrap under it at phone width. **On the machine** is what a sync does: it
- * puts the profile there or removes it. **Starred** is the machine's home-screen carousel and
+ * puts the profile there or removes it; one the machine keeps for itself (its backflush and
+ * descale) is always there, so its switch still reads on and cannot change, and the row says why.
+ * **Starred** is the machine's home-screen carousel and
  * is kept while the profile is off, but applies only while it is on, so it is disabled with
  * the reason. Switching off a profile a Recipe brews, or the one the machine has selected, asks
  * first. Nothing here writes to the machine: the next sync does.
@@ -56,6 +58,7 @@ export function ProfileRow({
   const archivedRecipe = entry.archived_recipe ?? null;
   const selected = entry.machine.selected === true;
   const pin = entry.pin ?? null;
+  const keptByMachine = entry.kept_by_machine === true;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
   const busy = onMachine.isPending || starred.isPending;
   const once = useSingleFlight();
@@ -64,6 +67,7 @@ export function ProfileRow({
   const send = (next: boolean) =>
     once((release) => onMachine.mutate({ rowId: row.id, on: next }, { onSettled: release }));
   const turn = (next: boolean) => {
+    if (keptByMachine) return;
     if (!next && (recipe !== null || selected)) {
       setConfirming(true);
       return;
@@ -115,6 +119,11 @@ export function ProfileRow({
               ) : null}
               {selected ? <Badge variant="outline">Selected</Badge> : null}
             </span>
+            {keptByMachine ? (
+              <span className="block text-muted-foreground text-xs" data-testid="kept-by-machine">
+                Kept by the machine
+              </span>
+            ) : null}
             <span className="block break-words text-muted-foreground text-xs">
               {profileHeadline(entry.active_version.profile as Json)}
               {entry.active_version.shots_brewed > 0
@@ -158,7 +167,7 @@ export function ProfileRow({
             <div className="flex items-center gap-2 text-sm">
               <Switch
                 checked={entry.on_machine}
-                disabled={busy}
+                disabled={busy || keptByMachine}
                 label={`${row.label} on the machine`}
                 data-testid="on-machine-switch"
                 onCheckedChange={turn}

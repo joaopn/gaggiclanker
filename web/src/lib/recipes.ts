@@ -21,9 +21,12 @@ import type {
  * nobody notices until they are comparing two versions side by side.
  */
 
-/** What Archive would take off the machine: the Recipe's own profile, when it is switched on. */
+/**
+ * What Archive would take off the machine: the Recipe's own profile, when it is switched on. The
+ * machine's own profiles (backflush, descale) stay: it keeps them whatever is archived.
+ */
 export function profileLeaving(profile: RecipeDetailData["profile"]): boolean {
-  return profile?.on_machine === true;
+  return profile?.on_machine === true && profile.kept_by_machine !== true;
 }
 
 /** Whether Archive asks first: something leaves the machine, the profile or a pin. */
@@ -53,7 +56,10 @@ export function archiveWords(
       ? "Its profile is switched off"
       : `Its profile is switched off and ${pinWords} unpinned`
     : `${pinWords.charAt(0).toUpperCase()}${pinWords.slice(1)} unpinned`;
-  return `It receives no more shots. ${done}: the next sync takes ${list} off the machine.`;
+  const stays = profile?.kept_by_machine
+    ? ` "${profile.machine_name}" stays on the machine: it is kept by the machine.`
+    : "";
+  return `It receives no more shots. ${done}: the next sync takes ${list} off the machine.${stays}`;
 }
 
 // ── the log ──────────────────────────────────────────────────────────

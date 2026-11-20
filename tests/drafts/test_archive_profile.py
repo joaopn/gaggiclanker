@@ -110,6 +110,7 @@ async def test_the_detail_says_what_archive_would_take_off_the_machine(adopted: 
         "machine_name": f"{BASE_LABEL} v1.1",
         "on_machine": True,
         "selected": False,
+        "kept_by_machine": False,
     }
 
     fake.selected_profile_id = file

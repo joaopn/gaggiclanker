@@ -48,6 +48,9 @@ function reasonWords(reason: string): string {
 }
 
 /** What a report on a profile means to a person; the server's own detail follows as a note. */
+/** What a row says when it is starred past the machine's tenth star: nothing is sent for it. */
+export const STAR_LIMIT_NOTE = "Starred, but the machine shows at most 10: not starred there.";
+
 const REPORT_WORDS: Record<string, string> = {
   missing: "Missing from the machine",
   unreadable: "The machine would not give it up to be read",
@@ -165,6 +168,8 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
       notes.push(
         `${action.device_id ? `The copy on the machine (${action.device_id}) stays` : "It stays on the machine"}: ${action.detail || reasonWords(action.reason)}.`,
       );
+    } else if (action.kind === "report" && action.reason === "star_limit") {
+      notes.push(STAR_LIMIT_NOTE);
     } else if (action.kind === "home_screen" && on) {
       notes.push(
         action.on ? "It will be starred on the machine." : "Its star will come off on the machine.",

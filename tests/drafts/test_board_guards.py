@@ -586,10 +586,12 @@ async def test_the_successor_of_a_deleted_selected_profile_is_never_a_utility_pr
 
 
 def reset_machine(fake: FakeDevice, name: str = "reborn") -> None:
-    """What a firmware update that wiped the profile memory leaves: files under new ids."""
+    """What a firmware update that wiped the profile memory leaves: files under new ids, and the
+    two profiles the firmware seeds at every boot under their fixed ids."""
     fresh = copy.deepcopy(fake.profiles[0])
     fresh.update(id=name, label="Factory default")
     fake.profiles = [fresh]
+    fake.ensure_system_profiles()
     fake.favorite_profile_ids.clear()
 
 
@@ -598,7 +600,9 @@ async def test_a_machine_that_lost_every_file_pauses_until_a_person_resumes(
 ) -> None:
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)
-    rows = len((await get_board(client))["rows"])
+    # The machine's own profiles come back under their fixed ids at the reboot, so they are not
+    # among the files a resume puts back.
+    rows = len([r for r in (await get_board(client))["rows"] if not r["kept_by_machine"]])
     reset_machine(fake)
     fake.ws_requests.clear()
 

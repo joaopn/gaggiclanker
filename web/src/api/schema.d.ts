@@ -4645,6 +4645,11 @@ export interface components {
              * @default false
              */
             in_conflict: boolean;
+            /**
+             * Kept By Machine
+             * @default false
+             */
+            kept_by_machine: boolean;
             machine: components["schemas"]["BoardMachineState"];
             /** Machine Name */
             machine_name: string;
@@ -8023,6 +8028,11 @@ export interface components {
          *     switched on, and whether it is the profile the machine has selected (as last mirrored).
          */
         RecipeProfileStanding: {
+            /**
+             * Kept By Machine
+             * @default false
+             */
+            kept_by_machine: boolean;
             /** Machine Name */
             machine_name: string;
             /** On Machine */

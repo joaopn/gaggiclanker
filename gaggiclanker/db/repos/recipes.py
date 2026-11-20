@@ -92,6 +92,7 @@ from gaggiclanker.domain.ratio import brew_ratio
 from gaggiclanker.domain.recipes import version_label
 from gaggiclanker.domain.slog import FIELD_DEFS
 from gaggiclanker.domain.spread import CountedShot
+from gaggiclanker.domain.system_profiles import is_system_profile
 from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
     OutcomeState,
@@ -655,6 +656,9 @@ class RecipeProfileStanding(BaseModel):
     machine_name: str
     on_machine: bool
     selected: bool
+    #: One of the machine's own profiles (backflush, descale): Archive does not switch it off and
+    #: the machine keeps it, so the page must not say it goes.
+    kept_by_machine: bool = False
 
 
 class CopiedFrom(BaseModel):
@@ -1621,6 +1625,9 @@ class RecipesRepository(Repository):
         row = await board.get(int(board_id))
         if row is None or row.deleted_at is not None or row.on_machine == on:
             return False
+        if not on and is_system_profile(row.device_profile_id):
+            # One of the machine's own profiles stays on it, as the Profiles page's switch says.
+            return False
         await board.update(row.id, BoardRowPatch(on_machine=on))
         return True
 
@@ -1635,6 +1642,7 @@ class RecipesRepository(Repository):
         row = await self.db.fetch_one(
             f"""
             SELECT pb.label AS label, pb.on_machine AS on_machine,
+                   pb.device_profile_id AS device_id,
                    COALESCE({label_sql("cur")}, '') AS version_label,
                    COALESCE(d.selected, 0) AS selected
               FROM recipes s
@@ -1652,6 +1660,7 @@ class RecipesRepository(Repository):
             machine_name=machine_name(str(row["label"]), str(row["version_label"]) or None),
             on_machine=bool(row["on_machine"]),
             selected=bool(row["selected"]),
+            kept_by_machine=is_system_profile(row["device_id"]),
         )
 
     # ── versions ─────────────────────────────────────────────────────

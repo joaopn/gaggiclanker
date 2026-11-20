@@ -81,6 +81,7 @@ export function boardRowView(
     planned: [],
     on_machine: base.on_machine,
     starred: base.on_home_screen,
+    kept_by_machine: false,
     in_conflict: false,
     conflict: null,
     recipe: null,
