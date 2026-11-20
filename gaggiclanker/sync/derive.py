@@ -48,7 +48,9 @@ __all__ = [
     "index_fields",
     "rederive_shots",
     "refill_final_weights",
+    "restate_stored_estimates",
     "sample_rows",
+    "unquarantine_readable_shots",
 ]
 
 log = structlog.get_logger(__name__)
@@ -314,6 +316,108 @@ async def refill_final_weights(shots: ShotsRepository) -> int:
         )
         filled += 1
     return filled
+
+
+async def unquarantine_readable_shots(shots: ShotsRepository) -> int:
+    """Read every quarantined shot's bytes again; return how many now parse and came back.
+
+    A shot is quarantined with its bytes when the parser cannot read them, and the parser
+    learns formats later (firmware 1.10's version 8, the legacy version 6 scale log), by
+    which time the machine may have deleted its copy. So at start each quarantined shot with
+    bytes is parsed again. One that parses is derived as a fetched shot is (the pressure gate
+    decided from the trace as the importer does, since no machine is asked at start) and
+    stored with its samples and taken out of quarantine in one transaction, through the
+    repository writer the importer's replace uses (so the shot's id, its Recipe, its notes
+    and the machine's index fields stay, but for the index volume, which is read against the
+    header: for a version 8 shot whose weight was the machine's estimate, the volume the index
+    copied from it is dropped). One that still fails stays as it is.
+
+    It is **not linked to a profile version** and not offered to a Recipe. A shot is linked to
+    the version its file holds when it is read, which is right for a shot read just after it
+    was brewed and says nothing for one read months later: no row records since when a file
+    has held its version, so there is nothing to compare the shot's start with. (The profile
+    pass links a shot with no link to the file's version at its next run, as it does any shot
+    that arrived before the mirror.) A recovered shot waits in the needs-a-Recipe inbox for the
+    person's Match by profile.
+
+    Idempotent: a recovered shot is no longer quarantined, and one that still fails is read
+    again and fails the same way, changing nothing.
+    """
+    recovered = 0
+    for held in await shots.quarantined_bytes():
+        try:
+            slog = parse_slog(held.raw_slog, held.device_id)
+            derived = derive_shot(
+                slog,
+                held.raw_slog,
+                device_id=held.device_id,
+                incomplete=slog.incomplete,
+            )
+            shot = derived.shot
+            # The machine's figure was stored when nothing could tell whether it was the
+            # estimate; the header can now.
+            shot.index_volume_g = slog.header_weight.index_volume(held.index_volume_g)
+            await shots.replace_derived(held.id, shot, derived.samples, restate_index_volume=True)
+        except Exception as exc:  # a shot must never stop the archive booting
+            if not isinstance(exc, SlogError):
+                log.warning("shot_unquarantine_failed", shot_id=held.id, error=str(exc))
+            continue
+        recovered += 1
+        log.info(
+            "shot_unquarantined",
+            shot_id=held.id,
+            device_id=held.device_id,
+            samples=len(derived.samples),
+            slog_version=shot.slog_version,
+            diagnostics_error=derived.diagnostics_error,
+        )
+    log.info("shots_unquarantined", count=recovered)
+    return recovered
+
+
+async def restate_stored_estimates(shots: ShotsRepository) -> int:
+    """Put right the stored version 8 shots that hold the machine's estimate as a weight.
+
+    A build that read version 8 without the rule for which weights are a scale's stored the
+    estimate as the shot's weights, its yield and its index volume, and took the scale flag
+    from the Bluetooth bit. Such a shot is derived again from its bytes and its derived
+    columns, samples, final weight, scale flag and index volume are written, keeping the row,
+    its Recipe, judgement, notes and profile link (:meth:`ShotsRepository.replace_derived`).
+    Run at start beside the recovery of quarantined shots.
+
+    There is no marker: :meth:`ShotsRepository.stored_estimates` finds the shots by what they
+    hold (a weight in a sample with no active-scale bit), so a shot once put right is never
+    found again, a database that never had one reads nothing but that query, and a backup
+    restored from before this ran is put right by the next start.
+    """
+    restated = 0
+    for shot_id in await shots.stored_estimates():
+        source = await shots.derivation_source(shot_id)
+        row = await shots.get(shot_id)
+        if source is None or row is None:
+            continue
+        try:
+            slog = parse_slog(source.raw_slog, source.device_id)
+            derived = derive_shot(
+                slog,
+                source.raw_slog,
+                device_id=source.device_id,
+                source=row.source,
+                has_pressure=source.has_pressure,
+                incomplete=row.incomplete or slog.incomplete,
+                profile=source.profile,
+            )
+            shot = derived.shot
+            shot.profile_version_id = source.profile_version_id
+            shot.index_volume_g = slog.header_weight.index_volume(row.index_volume_g)
+            await shots.replace_derived(shot_id, shot, derived.samples, restate_index_volume=True)
+        except Exception as exc:  # a shot must never stop the archive booting
+            log.warning("shot_estimate_restate_failed", shot_id=shot_id, error=str(exc))
+            continue
+        restated += 1
+        log.info("shot_estimate_restated", shot_id=shot_id, device_id=source.device_id)
+    log.info("shots_estimates_restated", count=restated)
+    return restated
 
 
 async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:

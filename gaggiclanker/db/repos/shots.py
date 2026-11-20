@@ -156,6 +156,8 @@ class ShotBytes(BaseModel):
     raw_slog: bytes
     #: The final weight stored now, which a re-read compares against.
     final_weight_g: float | None = None
+    #: What the machine's index said the volume was when the shot was stored.
+    index_volume_g: float | None = None
 
 
 class ShotDerivationSource(BaseModel):
@@ -648,7 +650,12 @@ class ShotsRepository(Repository):
         return shot_id
 
     async def replace_derived(
-        self, shot_id: int, shot: ShotInsert, samples: Sequence[ShotSampleRow] = ()
+        self,
+        shot_id: int,
+        shot: ShotInsert,
+        samples: Sequence[ShotSampleRow] = (),
+        *,
+        restate_index_volume: bool = False,
     ) -> None:
         """Re-state one shot from a fresh set of bytes, keeping what is ours.
 
@@ -662,6 +669,11 @@ class ShotsRepository(Repository):
         `deleted_on_device` — the device's own view of a shot, which no export
         carries and which re-deriving cannot invent — and the `device_shot_notes`
         row, which lives in its own table and is written by its own repository.
+
+        ``restate_index_volume`` writes ``shot.index_volume_g`` too, for the one caller that has
+        read the machine's figure against the shot's own header (reading a quarantined shot again):
+        the figure the index gave is the estimate for some shots, and that is only knowable once
+        the bytes parse. Otherwise the index columns are not this write's to touch.
 
         `profile_version_id` is COALESCEd rather than assigned: an import that
         cannot resolve the profile must not unlink a shot that was already
@@ -693,6 +705,8 @@ class ShotsRepository(Repository):
             "derivation_version": shot.derivation_version,
             "updated_at": utc_now(),
         }
+        if restate_index_volume:
+            payload["index_volume_g"] = shot.index_volume_g
         if shot.quarantined and samples:
             raise ValueError("a quarantined shot must not carry sample rows")
         assignments = ", ".join(
@@ -791,6 +805,52 @@ class ShotsRepository(Repository):
             (below_g,),
         )
         return self.to_models(ShotBytes, rows)
+
+    async def quarantined_bytes(self) -> list[ShotBytes]:
+        """Every quarantined shot with the bytes it was stored with, oldest first.
+
+        The candidates for reading a shot again when the parser learns a format it used to
+        refuse (the quarantine keeps the bytes for exactly that).
+        """
+        rows = await self.db.fetch_all(
+            "SELECT id, device_id, raw_slog, final_weight_g, index_volume_g FROM shots "
+            "WHERE quarantined = 1 AND LENGTH(raw_slog) > 0 ORDER BY id"
+        )
+        return self.to_models(ShotBytes, rows)
+
+    async def stored_estimates(self) -> list[int]:
+        """Ids of the stored version 8 shots that are not as a fresh derivation would store them.
+
+        A build that read version 8 without telling a scale's weight from the machine's estimate
+        stored the estimate in samples with no active-scale bit (`si` 0x0100), took the shot's
+        scale flag from the Bluetooth bit and kept the index volume the machine copied from its
+        header. A shot is found by what its rows hold, against the rules a derivation applies to
+        them: a weight in a sample with no bit; a weight at all when no brew sample (one without
+        the extended-recording bit 0x0010) has the bit; a scale flag that disagrees with whether
+        a brew sample has it. The derivation computes the flag from the rows it stores, so a
+        shot once put right satisfies all three and is never found again.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT s.id FROM shots s
+            WHERE s.quarantined = 0 AND s.slog_version >= 8
+              AND (
+                EXISTS (SELECT 1 FROM shot_samples x WHERE x.shot_id = s.id
+                        AND (x.v IS NOT NULL OR x.vf IS NOT NULL)
+                        AND COALESCE(x.si, 0) & 256 = 0)
+                OR (NOT EXISTS (SELECT 1 FROM shot_samples x WHERE x.shot_id = s.id
+                                AND COALESCE(x.si, 0) & 256 <> 0 AND COALESCE(x.si, 0) & 16 = 0)
+                    AND EXISTS (SELECT 1 FROM shot_samples x WHERE x.shot_id = s.id
+                                AND (x.v IS NOT NULL OR x.vf IS NOT NULL)))
+                OR s.scale_connected <> EXISTS (SELECT 1 FROM shot_samples x
+                                                WHERE x.shot_id = s.id
+                                                AND COALESCE(x.si, 0) & 256 <> 0
+                                                AND COALESCE(x.si, 0) & 16 = 0)
+              )
+            ORDER BY s.id
+            """
+        )
+        return [int(row["id"]) for row in rows]
 
     async def pending_derivations(self, version: int) -> list[int]:
         """Ids of the shots whose derived columns an older derivation wrote.

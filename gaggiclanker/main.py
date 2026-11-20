@@ -88,7 +88,12 @@ from gaggiclanker.settings import (
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
-from gaggiclanker.sync.derive import rederive_shots, refill_final_weights
+from gaggiclanker.sync.derive import (
+    rederive_shots,
+    refill_final_weights,
+    restate_stored_estimates,
+    unquarantine_readable_shots,
+)
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools import registry as tool_registry
 
@@ -430,6 +435,12 @@ async def _start(app: FastAPI, db: Database) -> None:
     # The wizard's runs. Same rule again: the wizard renders a `running` row as a
     # spinner, and nothing else would ever clear one left by a restart.
     interrupted_starts = await StartingPointRunsRepository(db).reconcile_running()
+    # Shots quarantined because the parser did not know their format yet (firmware 1.10's
+    # version 8, the legacy version 6 scale log) are read again from their bytes: the
+    # machine may have deleted its copy since. Before the passes below, which then see them.
+    shots_unquarantined = await unquarantine_readable_shots(ShotsRepository(db))
+    # Version 8 shots an earlier build stored with the machine's estimate as their weights.
+    estimates_restated = await restate_stored_estimates(ShotsRepository(db))
     # Shots archived before the final-weight rule last changed keep the weight
     # the old rule found in their bytes; re-reading the few with none, or with an
     # empty scale's tenth of a gram, brings them in line (a scale that dropped to
@@ -446,6 +457,8 @@ async def _start(app: FastAPI, db: Database) -> None:
         sync_runs_interrupted=interrupted_syncs,
         chat_runs_interrupted=interrupted_chats,
         starting_points_interrupted=interrupted_starts,
+        shots_unquarantined=shots_unquarantined,
+        shot_estimates_restated=estimates_restated,
         final_weights_refilled=final_weights_refilled,
         auth_sessions_expired=forgotten,
         auth_enabled=await auth.enabled(),
