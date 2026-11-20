@@ -32,7 +32,7 @@ from gaggiclanker.db.repos.shots import (
 )
 from gaggiclanker.domain.diagnostics import as_sample_dicts, brew_has_scale, transform_shot
 from gaggiclanker.domain.firmware_values import compute_firmware_values
-from gaggiclanker.domain.models import IndexEntry
+from gaggiclanker.domain.models import SI_BLUETOOTH_SCALE_CONNECTED, IndexEntry
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls, phase_types
 from gaggiclanker.domain.phase_metrics import compute_phase_metrics
 from gaggiclanker.domain.slog import DROPOUT_MIN_WEIGHT_G, Slog, SlogError, parse_slog
@@ -114,7 +114,7 @@ NO_TIMESTAMP_EPOCH = 10_000
 #: `si` bit 0x0004: a BLE scale was connected and healthy for this sample. A
 #: weight diagnostic on a shot without one is a diagnostic on an integration of
 #: modelled pump flow, which means much less.
-SI_SCALE_CONNECTED = 0x0004
+SI_SCALE_CONNECTED = SI_BLUETOOTH_SCALE_CONNECTED
 
 
 @dataclass(frozen=True, slots=True)

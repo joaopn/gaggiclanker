@@ -118,7 +118,7 @@ def test_percent_of_target() -> None:
 # ── skipped ─────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("reason", [1, 4])
+@pytest.mark.parametrize("reason", [1, 4, 9])
 def test_a_phase_never_begun_is_skipped_when_the_shot_stopped_on_a_target(reason: int) -> None:
     found = call(final_exit_reason=reason, metrics=SKIPPED)
     assert faults(found) == ["decline: skipped"]

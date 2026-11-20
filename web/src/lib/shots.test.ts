@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatGrams, formatListTime, formatSeconds, formatTime } from "@/lib/shots";
+import {
+  exitReasonLabel,
+  formatGrams,
+  formatListTime,
+  formatSeconds,
+  formatTime,
+} from "@/lib/shots";
 
 describe("formatListTime", () => {
   // Local wall-clock dates, so the assertions hold in whatever zone the suite
@@ -55,5 +61,14 @@ describe("formatSeconds and formatGrams", () => {
     expect(formatGrams(1234.5)).toBe("1234.5 g");
     expect(formatSeconds(null)).toBe("—");
     expect(formatGrams(undefined)).toBe("—");
+  });
+});
+
+describe("exitReasonLabel", () => {
+  it("names the ratio stop firmware 1.10 added, and keeps showing a code it does not know", () => {
+    expect(exitReasonLabel(9)).toBe("Ratio target");
+    expect(exitReasonLabel(1)).toBe("Volumetric target");
+    expect(exitReasonLabel(42)).toBe("Code 42");
+    expect(exitReasonLabel(null)).toBe("Unknown");
   });
 });

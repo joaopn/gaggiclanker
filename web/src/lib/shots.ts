@@ -114,6 +114,7 @@ export const EXIT_REASONS: Record<number, string> = {
   6: "Safety timeout",
   7: "Aborted",
   8: "Hold released",
+  9: "Ratio target",
 };
 
 export function exitReasonLabel(code: number | null | undefined): string {

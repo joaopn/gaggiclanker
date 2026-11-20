@@ -105,8 +105,9 @@ OVER_TARGET_SHARE = 1.10
 UNDER_TARGET_SHARE = 0.90
 
 #: The exit reasons that stop a shot on a quantity it was always going to reach
-#: part-way through its profile: 1 volumetric (weight), 4 pumped water.
-STOPPED_ON_A_TARGET = frozenset({1, 4})
+#: part-way through its profile: 1 volumetric (weight), 4 pumped water, 9 ratio
+#: (the firmware counts a ratio target as volumetric: it fires on volume over dose).
+STOPPED_ON_A_TARGET = frozenset({1, 4, 9})
 
 
 @dataclass(frozen=True, slots=True)

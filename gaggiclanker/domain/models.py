@@ -428,7 +428,8 @@ def _as_float(text: str) -> float | None:
 # ── shot log (.slog) ─────────────────────────────────────────────────
 
 #: Why a phase (or the shot) ended. Codes 0-7 from shot_log_format.h; 8 is
-#: emitted by BrewProcess for hold-to-flush but never made it into the header.
+#: emitted by BrewProcess for hold-to-flush but never made it into the header,
+#: 9 (firmware 1.10) is a ratio target: the volume reached `ratio * dose`.
 PHASE_EXIT_REASONS: dict[int, str] = {
     0: "Unknown",
     1: "Volumetric target",
@@ -439,7 +440,25 @@ PHASE_EXIT_REASONS: dict[int, str] = {
     6: "Safety timeout",
     7: "Aborted",
     8: "Hold released",
+    9: "Ratio target",
 }
+
+# `si` bits (`SYSTEM_INFO_*` in shot_log_format.h). The first five are what every
+# version wrote; 0x0020 to 0x0100 arrive with v8 (firmware 1.10). They are
+# information only: nothing keys a rule on them but the scale flag already read.
+SI_SHOT_STARTED_VOLUMETRIC = 0x0001
+SI_CURRENTLY_VOLUMETRIC = 0x0002
+SI_BLUETOOTH_SCALE_CONNECTED = 0x0004
+SI_VOLUMETRIC_AVAILABLE = 0x0008
+SI_EXTENDED_RECORDING = 0x0010
+#: The process is a brew (not a flush or a descale).
+SI_PROCESS_IS_BREW = 0x0020
+#: The shot's target is volumetric.
+SI_TARGET_IS_VOLUMETRIC = 0x0040
+#: The current phase has a volumetric target.
+SI_PHASE_HAS_VOLUMETRIC = 0x0080
+#: The active scale, hardware or Bluetooth, is connected and healthy.
+SI_ACTIVE_SCALE_CONNECTED = 0x0100
 
 
 class SystemInfo(BaseModel):
@@ -453,16 +472,25 @@ class SystemInfo(BaseModel):
     bluetooth_scale_connected: bool
     volumetric_available: bool
     extended_recording: bool
+    #: v8 bits; a file from before them reads False, which says "not recorded", not "no".
+    process_is_brew: bool = False
+    target_is_volumetric: bool = False
+    phase_has_volumetric: bool = False
+    active_scale_connected: bool = False
 
     @classmethod
     def from_raw(cls, raw: int) -> Self:
         return cls(
             raw=raw,
-            shot_started_volumetric=bool(raw & 0x0001),
-            currently_volumetric=bool(raw & 0x0002),
-            bluetooth_scale_connected=bool(raw & 0x0004),
-            volumetric_available=bool(raw & 0x0008),
-            extended_recording=bool(raw & 0x0010),
+            shot_started_volumetric=bool(raw & SI_SHOT_STARTED_VOLUMETRIC),
+            currently_volumetric=bool(raw & SI_CURRENTLY_VOLUMETRIC),
+            bluetooth_scale_connected=bool(raw & SI_BLUETOOTH_SCALE_CONNECTED),
+            volumetric_available=bool(raw & SI_VOLUMETRIC_AVAILABLE),
+            extended_recording=bool(raw & SI_EXTENDED_RECORDING),
+            process_is_brew=bool(raw & SI_PROCESS_IS_BREW),
+            target_is_volumetric=bool(raw & SI_TARGET_IS_VOLUMETRIC),
+            phase_has_volumetric=bool(raw & SI_PHASE_HAS_VOLUMETRIC),
+            active_scale_connected=bool(raw & SI_ACTIVE_SCALE_CONNECTED),
         )
 
 

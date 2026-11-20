@@ -1,4 +1,4 @@
-"""`.slog` binary shot-log codec, versions 1 through 7.
+"""`.slog` binary shot-log codec, versions 1 through 8.
 
 Layout mirrors `src/display/models/shot_log_format.h` and the reference
 reader `web/src/pages/ShotHistory/parseBinaryShot.js`; where those two differ
@@ -13,6 +13,15 @@ The three version breaks that matter:
   v6 sample is 2 bytes longer than a v5 one with the same `fieldsMask`.
 * **v7** added `wp` (cumulative water pumped) as mask bit 13, and repurposed
   two reserved header bytes as `finalExitReason` and `brewDelayMs`.
+* **v8** (firmware 1.10) keeps the v7 layout byte for byte and only adds `si`
+  bits (see ``gaggiclanker.domain.models``); it is read and written exactly as v7.
+
+One older file does not follow the list above: a **legacy hardware-scale v6**
+(`reserved0 == 26` and `fieldsMask == 0x1FFF`) kept the 2-byte tick-count `t` of
+v1-v5 and 26-byte samples. The firmware tells the two v6 layouts apart by that
+pair (`shotLogHasElapsedTimestamp`); :func:`has_elapsed_timestamp` is the same
+rule. This codec reads such a file but never writes one: the encoder only
+produces the layout the version number says.
 
 Parsing is deliberately forgiving about *content* and strict about *shape*: a
 half-written file still yields every sample it does contain (flagged
@@ -42,7 +51,7 @@ FINAL_EXIT_REASON_OFFSET = TRANSITION_COUNT_OFFSET + 1  # 459
 BREW_DELAY_OFFSET = TRANSITION_COUNT_OFFSET + 2  # 460
 
 MIN_VERSION = 1
-MAX_VERSION = 7
+MAX_VERSION = 8
 
 TEMP_SCALE = 10.0
 PRESSURE_SCALE = 10.0
@@ -89,6 +98,10 @@ FIELDS_MASK_ALL = 0x3FFF
 FIELDS_MASK_V5 = 0x1FFF
 
 TIME_BIT = 0
+
+#: The two header values that mark a legacy hardware-scale v6 file.
+LEGACY_V6_SAMPLE_SIZE = 26
+LEGACY_V6_FIELDS_MASK = FIELDS_MASK_V5
 
 
 class SlogError(ValueError):
@@ -249,14 +262,39 @@ def header_size_for(version: int) -> int:
     return HEADER_SIZE_V4 if version <= 4 else HEADER_SIZE_V5
 
 
-def sample_size_for(version: int, fields_mask: int) -> int:
-    """Sample record size: 2 bytes per set mask bit, plus 2 more for v6+ `t`.
+def has_elapsed_timestamp(version: int, device_sample_size: int, fields_mask: int) -> bool:
+    """Whether `t` is a `uint32` of elapsed milliseconds (v6 on) and not a `uint16` tick count.
+
+    The firmware's `shotLogHasElapsedTimestamp`: v6 and later, except the legacy
+    hardware-scale v6 (`reserved0` 26 with all of v5's 13 fields), which kept the
+    2-byte tick count of v1-v5. Only the header's own `reserved0` tells the two v6
+    layouts apart, which is why the parser asks it of the raw header and a JSON
+    export (which carries no `reserved0`) never reads as the legacy one.
+    """
+    return version >= 6 and not is_legacy_scale_v6(version, device_sample_size, fields_mask)
+
+
+def is_legacy_scale_v6(version: int, device_sample_size: int, fields_mask: int) -> bool:
+    """The legacy hardware-scale v6 header: version 6, 26-byte samples, all 13 v5 fields."""
+    return (
+        version == 6
+        and device_sample_size == LEGACY_V6_SAMPLE_SIZE
+        and fields_mask == LEGACY_V6_FIELDS_MASK
+    )
+
+
+def sample_size_for(version: int, fields_mask: int, *, device_sample_size: int = 0) -> int:
+    """Sample record size: 2 bytes per set mask bit, plus 2 more when `t` is a `uint32`.
 
     From v6 the time field is a `uint32` rather than a `uint16`; every other
-    field kept its width, so the whole widening shows up as this +2.
+    field kept its width, so the whole widening shows up as this +2. A legacy
+    hardware-scale v6 file (see :func:`has_elapsed_timestamp`) keeps the narrow
+    one, so pass the header's `reserved0` as ``device_sample_size`` to size it.
     """
     width = 2 * _popcount(fields_mask)
-    if version >= 6 and fields_mask & (1 << TIME_BIT):
+    if has_elapsed_timestamp(version, device_sample_size, fields_mask) and fields_mask & (
+        1 << TIME_BIT
+    ):
         width += 2
     return width
 
@@ -317,7 +355,7 @@ def parse_slog(data: bytes, shot_id: str | None = None) -> Slog:
     Raises:
         SlogError: bad magic, HTML instead of binary, a truncated header, or a
             sample size that contradicts the field mask.
-        UnsupportedSlogVersion: the version byte is outside v1-v7.
+        UnsupportedSlogVersion: the version byte is outside v1-v8.
     """
     if is_html_response(data):
         raise SlogError(
@@ -383,7 +421,10 @@ def parse_slog(data: bytes, shot_id: str | None = None) -> Slog:
     if fields_mask == 0:
         raise SlogError("invalid shot file: fieldsMask is 0 (no fields recorded)")
 
-    expected_sample_size = sample_size_for(version, fields_mask)
+    elapsed_timestamp = has_elapsed_timestamp(version, device_sample_size, fields_mask)
+    expected_sample_size = sample_size_for(
+        version, fields_mask, device_sample_size=device_sample_size
+    )
     if device_sample_size not in (0, expected_sample_size):
         raise SlogError(
             f"field mask indicates {_popcount(fields_mask)} fields "
@@ -419,7 +460,12 @@ def parse_slog(data: bytes, shot_id: str | None = None) -> Slog:
 
     samples = [
         _read_sample(
-            data, header_size + i * sample_size, layout, unknown_bits, version, sample_interval
+            data,
+            header_size + i * sample_size,
+            layout,
+            unknown_bits,
+            elapsed_timestamp,
+            sample_interval,
         )
         for i in range(usable)
     ]
@@ -441,7 +487,7 @@ def _read_sample(
     base: int,
     layout: list[_FieldDef],
     unknown_bits: list[int],
-    version: int,
+    elapsed_timestamp: bool,
     sample_interval: int,
 ) -> Sample:
     values: dict[str, float | int | None] = {}
@@ -454,11 +500,12 @@ def _read_sample(
             offset += 2
             continue
         if bit == TIME_BIT:
-            if version >= 6:
+            if elapsed_timestamp:
                 values["t"] = struct.unpack_from("<I", data, offset)[0]
                 offset += 4
             else:
-                # v1-v5 store a sample *index*; real time is index * interval.
+                # v1-v5 (and the legacy hardware-scale v6) store a sample *index*;
+                # real time is index * interval.
                 values["t"] = struct.unpack_from("<H", data, offset)[0] * sample_interval
                 offset += 2
             continue
@@ -513,6 +560,10 @@ def encode_slog(slog: Slog) -> bytes:
         raise UnsupportedSlogVersion(version)
     if header.fields_mask == 0:
         raise SlogError("cannot encode a shot with an empty fieldsMask")
+    if is_legacy_scale_v6(version, header.sample_size, header.fields_mask):
+        # Only the parser reads this layout; writing it as the v6 the number says
+        # would put 4-byte times where the header promises 26-byte samples.
+        raise SlogError("cannot encode a legacy hardware-scale v6 shot")
 
     header_size = header_size_for(version)
     sample_size = sample_size_for(version, header.fields_mask)

@@ -93,7 +93,7 @@ class ShotExportTransition(BaseModel):
     sample_index: int = Field(ge=0, alias="sampleIndex")
     phase_number: int = Field(ge=0, alias="phaseNumber")
     phase_name: str = Field(default="", alias="phaseName")
-    #: v7 only: why the *previous* phase ended. Reserved padding before then,
+    #: From v7: why the *previous* phase ended. Reserved padding before then,
     #: so an older export reads 0 ("Unknown") rather than a wrong answer.
     transition_reason: int = Field(default=0, ge=0, le=255, alias="transitionReason")
 
@@ -129,7 +129,7 @@ class ShotExportSample(BaseModel):
     v: float | None = None
     ev: float | None = None
     pr: float | None = None
-    #: v7 only: cumulative water pumped, ml.
+    #: From v7: cumulative water pumped, ml.
     wp: float | None = None
     si: int | None = Field(default=None, alias="systemInfo")
     phase_number: int | None = Field(default=None, ge=0, alias="phaseNumber")
@@ -194,7 +194,7 @@ class ShotExport(BaseModel):
     #: torn, and re-encoding reproduces exactly that.
     samples_expected: int | None = Field(default=None, ge=0, alias="samplesExpected")
     trailing_bytes: int = Field(default=0, ge=0, alias="trailingBytes")
-    #: v7 only.
+    #: From v7.
     final_exit_reason: int = Field(default=0, ge=0, le=255, alias="finalExitReason")
     brew_delay: int = Field(default=0, ge=0, alias="brewDelay")
     phase_transitions: list[ShotExportTransition] = Field(
