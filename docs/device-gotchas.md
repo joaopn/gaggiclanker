@@ -26,12 +26,26 @@ is one of the three. So:
   knocks a real client off every second.
 
 **3. `evt:history-shot-saved {id}` carries an *unpadded* int.**
-Ids are six-digit zero-padded in URLs and in the notes files, and unpadded on
-the event. One helper converts, and it is tested: `gaggiclanker/domain/ids.py`.
+Ids are six-digit zero-padded in URLs and in the notes files the display writes,
+and unpadded on the event. One helper converts, and it is tested:
+`gaggiclanker/domain/ids.py`.
 Nothing here acts on the event any more — a sync is a request — but the id is
 remembered, because the firmware writes the index entry and the event in quick
 succession and not atomically, and somebody pressing sync the moment the
 machine beeps is inside that window.
+
+**3a. Notes saved from the machine's web page may sit under the unpadded name.**
+Up to v1.9 the page sends the id as the index shows it, so its notes are
+`/h/31.json`, not `/h/000031.json`, and the index still flags the shot as having
+notes (it does so only when the card was saved with a rating, or after the
+machine rebuilds its index). `/api/history/` is a static route, so the file name is the URL:
+`GET /api/history/000031.json` finds nothing and `GET /api/history/31.json`
+finds the notes (firmware 1.10 serves that file too, and moves it onto the
+padded name only on a socket notes read or save, or an index rebuild). The sync
+asks for the unpadded name when the padded one is missing for a shot the index
+flags, over HTTP like the rest of the notes pass, so it needs no WebSocket slot.
+The document may carry the id the page wrote (`"31"`), and that is the id it
+keeps.
 
 **4. A `.slog` may be header-only while it is still being written.**
 Retry when `byteLength <= headerSize` rather than treating it as a corrupt
@@ -46,7 +60,11 @@ by anybody.
 Back off; it is not a failure. The firmware also serves its own SPA's HTML for
 unknown paths, so **a 200 whose content type is not what you asked for is an
 error** — treating it as data is how a sync run "succeeds" with an HTML page
-parsed as a shot.
+parsed as a shot. This includes a file that is not there: `/api/history/` is a
+static route that declines a missing file, so the request falls through to the
+catch-all and the machine answers the web page with **200, not 404**. For a
+notes file that means "no such file" (the sync stores nothing and asks again on
+the next pass); under memory pressure it can also mean a file that exists.
 
 **7. Pressure and flow are zero on Standard boards.**
 The sensor is a Pro part. Gate every pressure-derived diagnostic on the `cp`

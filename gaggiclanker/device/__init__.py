@@ -13,6 +13,7 @@ from gaggiclanker.device.errors import (
     DeviceBusy,
     DeviceError,
     DeviceProtocolError,
+    DeviceServedPage,
     DeviceTimeout,
     DeviceUnavailable,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "DeviceEvent",
     "DeviceEventBus",
     "DeviceProtocolError",
+    "DeviceServedPage",
     "DeviceTimeout",
     "DeviceUnavailable",
     "Disconnected",

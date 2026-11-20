@@ -14,7 +14,7 @@ import pytest
 from aiohttp import web
 
 from gaggiclanker.device.client import GaggimateClient
-from gaggiclanker.device.errors import DeviceBusy, DeviceProtocolError
+from gaggiclanker.device.errors import DeviceBusy, DeviceError, DeviceProtocolError
 from gaggiclanker.device.fake import FakeDevice, header_only_bytes, synthetic_slog_bytes
 
 
@@ -165,6 +165,62 @@ async def test_a_shot_with_no_notes_is_none_over_both_routes(
     assert fake_device.shots[196].notes is None
     assert await device_client.fetch_notes_json(196) is None
     assert await device_client.get_shot_notes(196) is None
+
+
+async def test_a_notes_file_that_is_not_there_is_none_although_the_machine_says_200(
+    fake_device: FakeDevice, device_client: GaggimateClient
+) -> None:
+    """`serveStatic` declines a missing file and the catch-all answers with the web page."""
+    assert fake_device.shots[196].notes is None
+    assert await device_client.fetch_notes_json(196) is None
+    assert await device_client.fetch_notes_json(196, unpadded=True) is None
+    # An id the machine has never heard of is the same.
+    assert await device_client.fetch_notes_json(9999) is None
+
+
+async def test_only_the_web_page_means_no_notes_other_failures_still_raise(
+    fake_device: FakeDevice, device_client: GaggimateClient
+) -> None:
+    """Of the ways a notes request can fail, only the page for a missing file is an answer."""
+    fake_device.error_paths["/api/history/000129.json"] = 500
+    with pytest.raises(DeviceError):
+        await device_client.fetch_notes_json(129)
+
+    fake_device.error_paths.clear()
+    fake_device.ota_in_progress = True
+    with pytest.raises(DeviceBusy):
+        await device_client.fetch_notes_json(129)
+
+    fake_device.ota_in_progress = False
+    fake_device.shots[129].notes_body = b"{not json"
+    with pytest.raises(DeviceProtocolError, match="000129 are not JSON"):
+        await device_client.fetch_notes_json(129)
+
+    fake_device.shots[129].legacy_notes = True
+    with pytest.raises(DeviceProtocolError, match="notes for 129 are not JSON"):
+        await device_client.fetch_notes_json(129, unpadded=True)
+
+
+async def test_notes_the_web_page_saved_are_found_only_by_the_unpadded_name(
+    fake_device: FakeDevice, device_client: GaggimateClient
+) -> None:
+    """Firmware 1.9's web page saves `/h/129.json`; the file name is the URL."""
+    shot = fake_device.shots[129]
+    assert shot.notes is not None
+    shot.notes["id"] = "129"  # the id the page wrote
+    shot.legacy_notes = True
+
+    assert await device_client.fetch_notes_json(129) is None
+    # The display's socket request names the padded file, which is not there either.
+    assert await device_client.get_shot_notes(129) is None
+    found = await device_client.fetch_notes_json("000129", unpadded=True)
+    assert found is not None
+    assert found.parsed.dose_out == 36.5
+    # The document's own id wins over the padded one the client would label it with.
+    assert found.id == "129"
+    # The padded name is the display's: a normal shot is not found by the plain one.
+    fake_device.shots[129].legacy_notes = False
+    assert await device_client.fetch_notes_json(129, unpadded=True) is None
 
 
 async def test_get_status_and_get_settings_are_plain_reads(

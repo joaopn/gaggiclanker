@@ -2,7 +2,9 @@
 
 The device speaks two dialects of the same number.  `evt:history-shot-saved`
 carries an *unpadded* int (`{"id": 129}`), while URLs (`/api/history/000129.slog`)
-and the notes file name use the 6-digit zero-padded form.  Getting this wrong
+and the notes file the machine's display writes use the 6-digit zero-padded
+form.  The machine's web page (firmware up to v1.9) saves notes under the
+unpadded id, so a notes file can have either name.  Getting this wrong
 fetches nothing and looks like a missing shot, so both directions live here and
 nowhere else.
 """

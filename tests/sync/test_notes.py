@@ -124,3 +124,137 @@ async def test_the_notes_run_is_its_own_ledger_entry(small_archive: Archive) -> 
     assert runs["notes"].kind == "notes"
     assert runs["notes"].notes_synced == 1
     assert runs["notes"].status == "ok"
+
+
+# ── notes the machine's web page saved under the unpadded name ───────────────
+
+LEGACY_ID = 103
+
+
+def _give_legacy_notes(archive: Archive, **fields: str | int) -> None:
+    """Notes saved from the machine's web page: the file is `/h/103.json`.
+
+    The document carries the id the page wrote, as the index shows it.
+    """
+    notes = {"id": str(LEGACY_ID), "rating": 4, "doseIn": "18", "doseOut": "36", **fields}
+    shot = archive.device.shots[LEGACY_ID]
+    shot.notes = notes
+    shot.legacy_notes = True
+    shot.entry.flags |= 0x04  # HAS_NOTES
+    shot.entry.rating = int(notes["rating"])
+
+
+def _notes_requests(archive: Archive) -> list[str]:
+    return [r for r in archive.device.requests if r.endswith(".json")]
+
+
+async def test_notes_saved_under_the_unpadded_name_reach_the_archive(
+    small_archive: Archive,
+) -> None:
+    """The web page of firmware 1.9 saves `/h/103.json`; the display's name is `/h/000103.json`.
+
+    The index flags the shot as having notes either way, so the pass has to look
+    further than the padded file before it gives up.
+    """
+    _give_legacy_notes(small_archive, notes="from the machine's page")
+
+    await small_archive.engine.sync_shots(trigger="test")
+
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(LEGACY_ID))
+    assert shot is not None
+    stored = await small_archive.engine.notes.get(shot.id)
+    assert stored is not None
+    assert stored.rating == 4
+    assert stored.notes == "from the machine's page"
+    # And, as with any notes that arrive with a shot, they seed its judgement.
+    judgement = await small_archive.engine.judgements.get(shot.id)
+    assert judgement is not None
+    assert (judgement.rating, judgement.dose_in_g) == (4, 18.0)
+    assert judgement.seeded_from_device_note is True
+    runs = await small_archive.engine.runs.last_runs()
+    assert (runs["notes"].status, runs["notes"].errors) == ("ok", 0)
+
+
+async def test_the_legacy_notes_are_not_asked_for_again_once_held(
+    small_archive: Archive,
+) -> None:
+    _give_legacy_notes(small_archive)
+
+    await small_archive.engine.sync_shots(trigger="test")
+    await small_archive.engine.sync_shots(trigger="test")
+
+    legacy = [r for r in _notes_requests(small_archive) if r.endswith(f"/{LEGACY_ID}.json")]
+    assert len(legacy) == 1
+
+
+async def test_a_notes_file_the_machine_does_not_have_is_no_notes_not_an_error(
+    small_archive: Archive,
+) -> None:
+    """The machine answers a missing file with its web page and a 200, not a 404.
+
+    The index flags the shot as having notes but neither name is on the machine.
+    Nothing is stored, no error is counted, and the next pass asks again.
+    """
+    small_archive.device.shots[LEGACY_ID].entry.flags |= 0x04  # HAS_NOTES, no file anywhere
+
+    await small_archive.engine.sync_shots(trigger="test")
+    first = _notes_requests(small_archive)
+    await small_archive.engine.sync_shots(trigger="test")
+    second = _notes_requests(small_archive)
+
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(LEGACY_ID))
+    assert shot is not None
+    assert await small_archive.engine.notes.get(shot.id) is None
+    assert await small_archive.engine.judgements.get(shot.id) is None
+    runs = await small_archive.engine.runs.last_runs()
+    assert (runs["notes"].status, runs["notes"].errors) == ("ok", 0)
+    for name in (pad6(LEGACY_ID), str(LEGACY_ID)):
+        assert first.count(f"/api/history/{name}.json") == 1
+    # Both names again on the second pass.
+    for name in (pad6(LEGACY_ID), str(LEGACY_ID)):
+        assert second.count(f"/api/history/{name}.json") == 2
+
+
+async def test_an_error_on_the_unpadded_file_is_one_error_and_the_pass_goes_on(
+    small_archive: Archive,
+) -> None:
+    """The padded file is not there (the web page), then the unpadded one fails.
+
+    That is a failed request, not an absent file: one error, nothing stored for
+    the shot, and the shots after it still get their notes.
+    """
+    small_archive.device.shots[LEGACY_ID].entry.flags |= 0x04  # HAS_NOTES, no file
+    small_archive.device.error_paths[f"/api/history/{LEGACY_ID}.json"] = 500
+    after = small_archive.device.shots[LEGACY_ID + 1]
+    after.notes = {"id": pad6(LEGACY_ID + 1), "rating": 3, "doseIn": "18"}
+    after.entry.flags |= 0x04
+    after.entry.rating = 3
+
+    await small_archive.engine.sync_shots(trigger="test")
+
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(LEGACY_ID))
+    assert shot is not None
+    assert await small_archive.engine.notes.get(shot.id) is None
+    later = await small_archive.engine.shots.get_by_device_id(pad6(LEGACY_ID + 1))
+    assert later is not None
+    assert await small_archive.engine.notes.get(later.id) is not None
+    runs = await small_archive.engine.runs.last_runs()
+    assert runs["notes"].errors == 1
+    assert runs["notes"].notes_synced == 2  # the fixture's own card and the one after
+
+
+async def test_a_notes_file_that_is_not_json_is_an_error_not_no_notes(
+    small_archive: Archive,
+) -> None:
+    shot_on_device = small_archive.device.shots[LEGACY_ID]
+    shot_on_device.notes_body = b'{"rating": 4, "doseIn": '
+    shot_on_device.entry.flags |= 0x04  # HAS_NOTES
+
+    await small_archive.engine.sync_shots(trigger="test")
+
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(LEGACY_ID))
+    assert shot is not None
+    assert await small_archive.engine.notes.get(shot.id) is None
+    runs = await small_archive.engine.runs.last_runs()
+    assert runs["notes"].errors == 1
+    assert "not JSON" in (runs["notes"].error or "")

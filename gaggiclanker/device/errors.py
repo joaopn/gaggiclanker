@@ -20,6 +20,7 @@ __all__ = [
     "DeviceBusy",
     "DeviceError",
     "DeviceProtocolError",
+    "DeviceServedPage",
     "DeviceTimeout",
     "DeviceUnavailable",
 ]
@@ -97,6 +98,15 @@ class DeviceProtocolError(DeviceError):
     status = 502
     code = "DEVICE_PROTOCOL_ERROR"
     retryable = True
+
+
+class DeviceServedPage(DeviceProtocolError):
+    """The machine answered a file request with its own web page.
+
+    A :class:`DeviceProtocolError` in every other respect (same status, code and
+    retryability), named apart so that the one caller for whom "a page instead
+    of the file" is an answer, not a failure, can catch it and nothing else.
+    """
 
 
 class DeviceTimeout(DeviceError):

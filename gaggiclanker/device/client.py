@@ -72,6 +72,7 @@ from gaggiclanker.device.errors import (
     DeviceBusy,
     DeviceError,
     DeviceProtocolError,
+    DeviceServedPage,
     DeviceTimeout,
     DeviceUnavailable,
     classify_device_error,
@@ -1139,26 +1140,43 @@ class GaggimateClient:
             await asyncio.sleep(min(wait, max(0.0, deadline - time.monotonic())))
             wait = min(wait * 2, SLOG_RETRY_MAX_S)
 
-    async def fetch_notes_json(self, shot_id: int | str) -> ShotNotes | None:
+    async def fetch_notes_json(
+        self, shot_id: int | str, *, unpadded: bool = False
+    ) -> ShotNotes | None:
         """`/api/history/<id6>.json` — the notes file, or ``None`` if there is none.
 
         The same document :meth:`get_shot_notes` fetches over the socket. Both
         exist because the socket is the machine's own UI's route and HTTP is the
         one that still works when all three WebSocket slots are taken.
+
+        ``unpadded=True`` asks for `/api/history/<id>.json` instead: the file
+        name is the URL, and the machine's web page of firmware up to v1.9
+        saved its notes under the id as the index shows it (`/h/31.json`), so
+        the padded name never finds them. Firmware 1.10 serves that file too.
+        The document's own `id`, when it has one, is what comes back.
         """
         padded = pad6(shot_id)
-        raw = await self._get_bytes(f"/api/history/{padded}.json", accept="application/json")
+        name = str(unpad(shot_id)) if unpadded else padded
+        try:
+            raw = await self._get_bytes(f"/api/history/{name}.json", accept="application/json")
+        except DeviceServedPage:
+            # A notes file that does not exist is not a 404 on the machine:
+            # `serveStatic` declines it and the catch-all answers 200 with the
+            # web page. That is "no file", the same as a 404. (Under memory
+            # pressure a file that does exist can come back as the page too; the
+            # caller stores nothing for `None`, so the next sync asks again.)
+            return None
         if raw is None:
             return None
         try:
             body = json.loads(raw)
         except ValueError as exc:
             raise DeviceProtocolError(
-                f"The machine's notes for {padded} are not JSON", details=str(exc)
+                f"The machine's notes for {name} are not JSON", details=str(exc)
             ) from exc
         if not isinstance(body, dict) or not body:
             return None
-        return self._parse_notes(body, padded)
+        return self._parse_notes(body, padded, name)
 
     async def get_status(self) -> dict[str, Any]:
         """`GET /api/status` — `{mode, tt, ct}`.
@@ -1232,7 +1250,7 @@ class GaggimateClient:
                 raise DeviceUnavailable(f"Could not reach the machine for {path}: {exc}") from exc
 
         if is_html_response(body):
-            raise DeviceProtocolError(
+            raise DeviceServedPage(
                 f"The machine served its web UI instead of {path}. "
                 "The firmware answers unknown paths with the SPA, and /api/history "
                 "returns HTML under memory pressure — worth retrying.",
@@ -1286,7 +1304,7 @@ class GaggimateClient:
             incomplete=incomplete_hint or slog.incomplete,
         )
 
-    def _parse_notes(self, body: dict[str, Any], padded: str) -> ShotNotes:
+    def _parse_notes(self, body: dict[str, Any], padded: str, name: str | None = None) -> ShotNotes:
         # The firmware stores whatever object it was handed, so `id` may be
         # missing entirely; the one we asked for is the right answer.
         payload = {"id": padded, **body}
@@ -1294,7 +1312,7 @@ class GaggimateClient:
             return ShotNotes.model_validate(payload)
         except ValidationError as exc:
             raise DeviceProtocolError(
-                f"The machine's notes for {padded} do not validate", details=str(exc)
+                f"The machine's notes for {name or padded} do not validate", details=str(exc)
             ) from exc
 
 

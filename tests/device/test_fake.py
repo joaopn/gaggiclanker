@@ -77,9 +77,11 @@ async def test_an_unknown_path_gets_the_spa_like_the_real_firmware(
 ) -> None:
     """`serveWebAsset` answers any unrecognised path with index.html.
 
-    A file *under* `/api/history/` that does not exist is still a real 404 —
-    that route is a static mount — but a browser-shaped path is the SPA, which
-    is how a mistyped URL turns into "expected binary, got HTML".
+    The `.slog` route under `/api/history/` keeps its 404 for a file that is
+    not there, but a notes file that is not there answers the web page with a
+    200: the route is a static mount that declines a missing file, and the
+    catch-all serves the SPA. A browser-shaped path is the SPA too, which is
+    how a mistyped URL turns into "expected binary, got HTML".
     """
     async with httpx.AsyncClient(base_url=f"http://{fake_device.address}") as http:
         response = await http.get("/shots/42")

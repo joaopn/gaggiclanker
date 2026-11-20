@@ -13,6 +13,12 @@ database.
 
 ## [Unreleased]
 
+### Notes with a rating entered in the machine's web page now reach the app
+
+- Notes saved from the machine's own web page were never picked up when the machine files them under the shot's plain number (firmware up to 1.9 does): the app asked for the six-digit file name, found nothing, and the shot showed no machine notes and got no judgement from them. The machine flags a shot as having notes only when the card was saved with a rating (or after the machine rebuilds its index), so this concerns shots rated there. When the machine's index says a shot has notes and the six-digit file is not there, the sync now asks for the file under the plain number too, over the same connection as the rest of the notes pass, and the notes arrive and seed the judgement like any others.
+- A notes file the machine does not have no longer counts as a sync error. The machine answers a missing file with its web page, which used to be reported as a failed notes pass; it now means "no notes" and the next sync looks again.
+- No database change.
+
 ### The word "Set" is a verb again in the messages that tell you to set a setting
 
 - The Recipe rename had also rewritten the verb, so some messages read "Recipe `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings". The sync refusal when no machine is configured, the three "no API key / no base URL is configured" messages of the LLM providers, the Device page's empty state and the button that records a designed Recipe's first version say "Set" again.

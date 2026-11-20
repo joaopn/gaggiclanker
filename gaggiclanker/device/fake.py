@@ -125,6 +125,12 @@ class FakeShot:
     entry: IndexEntry
     slog_bytes: bytes
     notes: dict[str, Any] | None = None
+    #: The notes file sits under the unpadded name (`/h/31.json`), where the
+    #: machine's own web page saved it, and not under the padded one the
+    #: firmware's display uses.
+    legacy_notes: bool = False
+    #: Serve these bytes as the notes file instead of the JSON of `notes`.
+    notes_body: bytes | None = None
     #: Serve a header-only file for this many more requests before the real
     #: bytes — the "device is still writing" case, counted down per request.
     header_only_requests: int = 0
@@ -243,6 +249,8 @@ class FakeDevice:
     ota_in_progress: bool = False
     #: Paths that answer with the SPA instead of what was asked for.
     html_paths: set[str] = field(default_factory=set)
+    #: Paths that answer with this status and no data, whatever is behind them.
+    error_paths: dict[str, int] = field(default_factory=dict)
     #: Request types the fake receives and deliberately never answers.
     hang_requests: set[str] = field(default_factory=set)
     #: How many clients may be attached at once. A connection over the limit
@@ -390,6 +398,7 @@ class FakeDevice:
         slog_bytes: bytes,
         *,
         notes: dict[str, Any] | None = None,
+        legacy_notes: bool = False,
         timestamp: int | None = None,
         profile_name: str = "Test Profile",
         header_only_requests: int = 0,
@@ -420,6 +429,7 @@ class FakeDevice:
             entry=entry,
             slog_bytes=slog_bytes,
             notes=notes,
+            legacy_notes=legacy_notes,
             header_only_requests=header_only_requests,
         )
         self.shots[shot_id] = shot
@@ -521,11 +531,13 @@ class FakeDevice:
             await asyncio.sleep(self.history_delay_s)
 
     def _quirk(self, request: web.Request, *, history: bool) -> web.Response | None:
-        """The two failures that can hit any route, before the route runs."""
+        """The failures that can hit any route, before the route runs."""
         if history and self.ota_in_progress:
             return web.Response(status=503, text="Update in progress")
         if request.path in self.html_paths:
             return web.Response(body=SPA_HTML, content_type="text/html")
+        if request.path in self.error_paths:
+            return web.Response(status=self.error_paths[request.path], text="Internal error")
         return None
 
     async def _status_handler(self, request: web.Request) -> web.Response:
@@ -585,8 +597,28 @@ class FakeDevice:
         await self._stall()
         name = request.match_info["name"]
         stem, _, suffix = name.partition(".")
-        # The device serves `/h/` with serveStatic, so the *padded* name is the
-        # filename. An unpadded id is a 404 here exactly as it is there.
+        # The device serves `/h/` with serveStatic, so the name in the URL is
+        # the filename, exactly: a notes file saved under the unpadded id
+        # answers to that name and the display's to the padded one.
+        if suffix == "json":
+            shot = next(
+                (
+                    s
+                    for s in self.shots.values()
+                    if s.entry.id not in self.missing_files
+                    and (str(s.entry.id) if s.legacy_notes else pad6(s.entry.id)) == stem
+                ),
+                None,
+            )
+            if shot is None or (shot.notes is None and shot.notes_body is None):
+                # serveStatic declines a file that is not there, so the request
+                # falls through to the catch-all that serves the web page: 200
+                # with HTML, not 404.
+                return web.Response(body=SPA_HTML, content_type="text/html")
+            if shot.notes_body is not None:
+                return web.Response(body=shot.notes_body, content_type="application/json")
+            return web.json_response(shot.notes)
+
         shot = next((s for s in self.shots.values() if pad6(s.entry.id) == stem), None)
         if shot is None or shot.entry.id in self.missing_files:
             return web.Response(status=404, text="Not found")
@@ -599,10 +631,6 @@ class FakeDevice:
                     content_type="application/octet-stream",
                 )
             return web.Response(body=shot.slog_bytes, content_type="application/octet-stream")
-        if suffix == "json":
-            if shot.notes is None:
-                return web.Response(status=404, text="Not found")
-            return web.json_response(shot.notes)
         return web.Response(status=404, text="Not found")
 
     async def _spa_handler(self, request: web.Request) -> web.Response:
@@ -775,7 +803,14 @@ class FakeDevice:
             return
         elif tp == "req:history:notes:get":
             wanted = str(message.get("id", ""))
-            shot = next((s for s in self.shots.values() if pad6(s.entry.id) == wanted), None)
+            shot = next(
+                (
+                    s
+                    for s in self.shots.values()
+                    if pad6(s.entry.id) == wanted and not s.legacy_notes
+                ),
+                None,
+            )
             await self._reply(socket, tp, rid, notes=(shot.notes if shot else {}) or {})
         else:
             # Fire-and-forget commands get no answer at all on the real device,

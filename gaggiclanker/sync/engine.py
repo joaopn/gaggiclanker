@@ -1115,7 +1115,11 @@ class SyncEngine:
 
         Over HTTP rather than `req:history:notes:get`, because HTTP is the route
         that still works when all three of the device's WebSocket slots are
-        taken by browser tabs.
+        taken by browser tabs. A file the machine does not have counts as no
+        notes rather than an error, and nothing is stored for it, so the next
+        pass asks again. The machine's own web page saved some notes under the
+        unpadded file name (firmware up to 1.9), so an entry flagged as having
+        notes whose padded file is missing is asked for by that name too.
 
         Sequential, not pipelined: these documents are a few hundred bytes and
         there are only ever as many of them as the user has actually written.
@@ -1142,6 +1146,11 @@ class SyncEngine:
                     continue
                 try:
                     notes = await self.client.fetch_notes_json(device_id)
+                    if notes is None:
+                        # The entry says there are notes and the display's file
+                        # is not there: the machine's web page may have saved
+                        # them under the unpadded name.
+                        notes = await self.client.fetch_notes_json(device_id, unpadded=True)
                 except DeviceError as exc:
                     update.errors += 1
                     update.error = str(exc)
