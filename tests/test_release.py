@@ -201,6 +201,24 @@ def test_the_web_stage_copies_every_file_the_web_imports_from_outside_web() -> N
     assert not missing, f"the web-build stage does not copy: {missing}"
 
 
+def test_the_image_installs_the_package_with_its_licence_file() -> None:
+    """`pyproject.toml` names `LICENSE` as the package's licence file.
+
+    Hatchling builds the package in the python-build stage from what that stage
+    copied, and leaves a licence file it cannot find out of the metadata
+    without failing, so an image built without the file would install a
+    package that does not carry its licence.
+    """
+    pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    assert pyproject["project"]["license-files"] == ["LICENSE"]
+    assert (REPO_ROOT / "LICENSE").is_file()
+
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    stage = dockerfile.split("AS python-build", 1)[1].split("\nFROM ", 1)[0]
+    copies = [line.split()[1:-1] for line in stage.splitlines() if line.startswith("COPY ")]
+    assert any("pyproject.toml" in sources and "LICENSE" in sources for sources in copies)
+
+
 def test_compose_configures_no_setting_anywhere_in_the_file() -> None:
     """A former setting variable assigned here would do nothing, which is worse than absent.
 
