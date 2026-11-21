@@ -13,6 +13,12 @@ database.
 
 ## [Unreleased]
 
+### A short README, the guide under `docs/`, and a licence
+
+- The README now fits on a page or two: what the app does, how to install it, and five screenshots of using it. The guide it used to hold is unchanged, in pages under `docs/`: getting started, configuration, shots and Recipes, profiles and the machine, review and chat, troubleshooting and development. The sign-in page's lost-password hint now points at the troubleshooting page.
+- The project is licensed under the GNU AGPL, version 3 or later (`LICENSE`).
+- No database change.
+
 ### A dose the machine writes on its own no longer counts as a judgement
 
 - Firmware 1.10 writes the profile's dose into a shot's notes when the shot ends and the notes are empty. The app took that for a notes card somebody filled in and gave the shot a judgement holding only a dose, which hid it from the "not judged yet" views. A notes card whose only filled field is the dose now seeds no judgement; the machine's notes are still stored and shown as the machine's notes. A card that holds the dose and also a rating, a dose out, a ratio, a grind setting, a bean, a taste balance of sour or bitter, or a note still seeds one as before. Someone who typed only a dose on the machine gets the same treatment, and so does a notes file read from an import, which follows the same rule. No database change.
