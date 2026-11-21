@@ -2,7 +2,8 @@
 
 ## LLM settings
 
-A review, the chat and the drafts go through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:
+A review, the chat and the drafts go through one provider, chosen with `llmProvider` under
+**Settings → LLM**:
 `claude_code` (the default — it runs the Claude Code CLI against a Claude
 subscription, so there is no API key to buy), `anthropic`, `openrouter`,
 `openai`, `ollama`, `lmstudio`, or `openai_compatible` for any other gateway.
@@ -30,8 +31,8 @@ working token from a revoked one.
 
 `modelDefault` is the default model; `modelReview`, `modelDraft`, `modelChat`,
 `modelStartingPoint` and `modelPatterns` override it per kind of call, and an empty value lets the
-provider choose. `GAGGICLANKER_LLM_TIMEOUT_S` bounds one attempt, and
-`GAGGICLANKER_LLM_RATE_LIMIT_RETRIES` is a process-wide budget: when the provider
+provider choose. `llmTimeoutSeconds` bounds one attempt, and
+`llmRateLimitRetries` is a process-wide budget: when the provider
 throttles the account the whole app stops rather than failing every queued shot
 in turn, and Settings → LLM has the button that starts it again. Settings →
 Prompts edits the prompts themselves — they are rows in the database, seeded
