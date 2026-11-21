@@ -175,10 +175,12 @@ from `POST /api/auth/login`).
 
 **Restore from file.** *Restore from file…* takes a file you uploaded, never one kept on the
 server: a gaggiclanker download, or a plain copy of a gaggiclanker database. The server checks
-it first and changes nothing: it must be a SQLite file that passes its integrity check, hold
-the app's tables, have the same database structure as this version (a backup restores only
-into the version that made it, or one with the same database; any other file is refused), and
-be under 1 GB. The page then shows what the file holds beside what the app holds
+it first and changes nothing in the app: it must be a SQLite file that passes its integrity
+check, hold the app's tables, have this version's database structure, and be under 1 GB. A
+backup made by an older version, in the state that version left it, is first upgraded on the
+uploaded copy by the same steps an upgrade at start runs, and the page says it will be
+upgraded; a backup from a newer version is refused (update gaggiclanker first), and so is
+any other structure. The page then shows what the file holds beside what the app holds
 now. Confirming:
 
 - **replaces everything** in the app with the file;
