@@ -93,8 +93,8 @@ export function SignInPage() {
 
         <p className="mt-6 text-muted-foreground text-xs">
           The username and password are set under Settings → Authentication. Lost the password?
-          Deleting the stored password hash turns sign-in off; the README's troubleshooting section
-          has the one-line command.
+          Deleting the stored password hash turns sign-in off; the troubleshooting guide
+          (docs/troubleshooting.md) has the one-line command.
         </p>
       </div>
     </div>

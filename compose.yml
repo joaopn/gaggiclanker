@@ -8,7 +8,7 @@
 # file to fill in: every runtime setting is configured in the UI and stored in
 # the database. The few variables the process itself reads (DATA_DIR, HOST,
 # PORT, LOG_LEVEL, LOG_JSON, WEB_DIST, CORS_ORIGINS) are set by the image; the
-# README's Configuration section says what each one does.
+# configuration guide (docs/configuration.md) says what each one does.
 #
 # Networking, which is the only decision this file forces.
 #

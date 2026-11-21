@@ -167,14 +167,14 @@ async def test_empty_retired_names_boot_normally(
 
 
 # ---------------------------------------------------------------------------
-# The lost-password recovery the README describes
+# The lost-password recovery the troubleshooting guide describes
 # ---------------------------------------------------------------------------
 
 
 async def test_deleting_the_hash_row_turns_auth_off_without_a_restart(env: EnvSettings) -> None:
     """Delete the `authPasswordHash` row, then set a new password in Settings.
 
-    The deletion is made the way the README's one-liner makes it: from another
+    The deletion is made the way the troubleshooting guide's one-liner makes it: from another
     process's connection to the same file, with the app still running.
     """
     async with running_app(env) as (_app, client):

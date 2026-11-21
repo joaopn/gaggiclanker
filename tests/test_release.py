@@ -3,7 +3,7 @@
 There is one place to configure this application — the Settings page, backed by
 the database — and a handful of variables the process reads before there is a
 database to read. Documentation rots silently, so both halves are pinned here: a
-bootstrap variable with no line in the README is invisible to whoever deploys
+bootstrap variable with no line in the configuration guide is invisible to whoever deploys
 this, and a tracked file of variables would be a second surface that looks like
 it works and does not. A clean checkout must boot on its defaults with nothing
 copied or edited first.
@@ -33,7 +33,7 @@ from gaggiclanker.settings import (
 from tests.conftest import running_app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-README = REPO_ROOT / "README.md"
+CONFIGURATION_GUIDE = REPO_ROOT / "docs" / "configuration.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 COMPOSE = REPO_ROOT / "compose.yml"
 
@@ -52,16 +52,16 @@ def bootstrap_variable_names() -> list[str]:
     return names
 
 
-def test_the_bootstrap_variables_are_documented_in_the_readme() -> None:
+def test_the_bootstrap_variables_are_documented_in_the_configuration_guide() -> None:
     """The seven the process reads before it can open the database.
 
-    They are documented in the README's Configuration section rather than in a
+    They are documented in `docs/configuration.md` rather than in a
     file to copy, because a tracked file of variables is what this release got
     rid of.
     """
-    readme = README.read_text(encoding="utf-8")
+    guide = CONFIGURATION_GUIDE.read_text(encoding="utf-8")
     for name in bootstrap_variable_names():
-        assert name in readme, f"{name} is not documented in README.md"
+        assert name in guide, f"{name} is not documented in docs/configuration.md"
 
 
 def test_the_repository_ships_no_env_file() -> None:
