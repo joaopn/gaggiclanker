@@ -19,6 +19,8 @@ Nothing an agent does reaches the machine: a profile it proposes waits for you a
 
 *How this works: [Profile sync](profile-sync.md).*
 
+![The Profiles page with the On the machine and Starred switches](assets/profiles.png)
+
 With **Writes** on, every sync ends by making the machine hold exactly the profiles marked **On the machine**. The first sync with the switch on only reads them into the list. From then on a sync does this:
 
 * **On**: saves the active version over the profile's own file. A profile with no file gets one.

@@ -64,6 +64,8 @@ The chat is told every claim you did not reject, never the review's summary. A r
 
 *How this works: [Chat and proposals](chat-and-proposals.md).*
 
+![A Recipe conversation with a proposed change waiting to be accepted](assets/chat.png)
+
 The **Chat** page (`g c`) is a conversation with an agent that asks the archive its own questions. Above the conversation is a row of badges: **General**, then each Recipe you have not archived. Click a badge to list its conversations. **Show archived Recipes** adds the archived ones.
 
 | Kind | How to open it | What it can read |

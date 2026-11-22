@@ -14,7 +14,7 @@ It does not watch the machine live. Nothing is copied until you press **Sync**. 
 ## Quick start
 
 ```bash
-git clone <this repo> && cd gaggiclanker
+git clone https://github.com/joaopn/gaggiclanker.git && cd gaggiclanker
 docker compose up -d --build         # builds the image and starts on :8042
 curl localhost:8042/health           # {"ok":true,"data":{"status":"ok",...}}
 open http://localhost:8042           # the UI
@@ -32,6 +32,21 @@ PORT=9000 uv run gaggiclanker            # a source checkout, no Docker
 
 `compose.yml` uses host networking by default, so the app is on port 8042 of the box you started it on. Docker Desktop does not support that. Swap in the `ports:` block the file documents next to it, and use an IP for the machine's host.
 
+**To update**, pull and rebuild. When a release changes the database, the app backs it up and upgrades it at start.
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+**To run without Docker:**
+
+```bash
+uv sync
+(cd web && npm ci && npm run build)
+uv run gaggiclanker            # serves on :8042; PORT=9000 to change it
+```
+
 ## First run
 
 1. **Open the UI** at `http://localhost:8042`.
@@ -40,5 +55,7 @@ PORT=9000 uv run gaggiclanker            # a source checkout, no Docker
 4. **Turn on authentication** if anything you do not trust can reach this box. See [Authentication](configuration.md#authentication). It is off by default, which is right for a machine only your own network can reach.
 5. **Set up the model.** A review and the chat need one provider. The cheapest to get working is `claude_code`, which uses a Claude subscription you may already have. Run `claude setup-token` on any machine with the Claude CLI installed and paste the token into **Settings → LLM**. An interactive `claude login` is not enough. Any OpenAI-compatible gateway works too; see [LLM settings](review-and-chat.md#llm-settings).
 6. **Take a backup** once there is something worth keeping: **Settings → System → Backup & restore → Download backup**, or `curl -o backup.db 'localhost:8042/api/backup?include_keys=false'`.
+
+![The Device page after a sync: the machine's versions and the last run of each sync pass](assets/sync.png)
 
 Your data lives in `./data`, one SQLite file. Back it up from the Settings page (it is safe while the app is running), or copy that directory while the app is stopped. You do not need to create `./data` first. If you would rather not have the container fix its ownership, `compose.yml` documents a named-volume alternative next to the mount.

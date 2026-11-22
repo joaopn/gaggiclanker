@@ -28,9 +28,13 @@ The sidebar has Shots, Chat, Recipes, Profiles, **Brew setup** (Beans, Hardware,
 
 A new shot is filed under the live Recipe that brews its profile. With none, it waits in the "needs a Recipe" inbox, and **Match by profile** files the waiting ones. **Chat about**, above the table, has one button per Recipe you are brewing. It opens that version's conversation with a question already typed, so you only press Enter.
 
+![A shot's page with the judgement form and its curves](assets/judge.png)
+
 ## The experiment log
 
 *How this works: [Recipes and versions](recipes-and-versions.md).*
+
+![A Recipe page with the rating trend and the experiment log](assets/recipe.png)
 
 A Recipe page is a record of experiments, one per version. A version's numbers are the **profile** version, the grind (text and number), the dose and the target yield. Each version also says what changed and what you were trying. Optionally it says what you **predicted** it would do, and compared to which version.
 
