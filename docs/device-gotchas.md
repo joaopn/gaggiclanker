@@ -83,6 +83,8 @@ were genuine (the `si` bits and the capability flags), because a diagnostic on a
 modelled signal means less than one on a measured signal and the UI has to be
 able to say so.
 
+Puck flow is an estimate from the pump model: it runs at about the pump flow, well above the cup flow, and does not track when coffee reaches the cup (on most shots it starts seconds later, on a long pre-infusion much earlier). The cup flow is the flow the scale sees, which is what reaches the cup, so it needs a BLE scale paired with the machine; without one there is no final weight and the first drip shown is the puck flow's estimate, labelled so. Every pressure-derived diagnostic is gated on the board's capability flag, so the curves of a Standard board are honest rather than flat lines pretending to be data. On a board with a scale the shot page opens on pressure, target pressure, cup flow, weight and temperature.
+
 **9. The machine deletes old shots when free space drops below 500 KB.**
 It is a buffer, not an archive. Sync often enough that a few hundred shots
 never accumulate on it, keep the raw bytes, and never lose a shot to a parse

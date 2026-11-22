@@ -52,7 +52,7 @@ The machine's web UI exports a shot as `shot-<id>.json` and a profile as `profil
 
 ## The connection to the machine
 
-`DeviceConnection` is the one owner of the machine client and the sync engine. Saving a new host, protocol, timeout or the sync switch rebuilds both live, with no restart. A change that would move the connection while a sync is using the machine is refused with a 409 naming it, and nothing is stored; a sync asked for during a change waits and goes to the new connection. A pass cut short by a rebuild or a shutdown is recorded as stopped, never as `ok`.
+`DeviceConnection` is the one owner of the machine client and the sync engine. Saving a new host, protocol, timeout or the sync switch rebuilds both live, with no restart. A change that would move the connection while a sync is using the machine is refused with a 409 naming it, and nothing is stored; a sync asked for during a change waits and goes to the new connection. `GET /api/device/status` reports what the client thinks of the connection, and the log carries a `device_connection_failed` line with the actual error on every failed attempt. A pass cut short by a rebuild or a shutdown is recorded as stopped, never as `ok`.
 
 ## Firmware behaviours the sync is built around
 
