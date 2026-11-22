@@ -44,6 +44,12 @@ Worked out every time a shot is read, from its stored numbers, where it is filed
 
 **There is no score and no grade on any number.** Warnings are facts to weigh against what the profile is for, never a verdict on their own.
 
+The universal warnings are four: over target (the final weight is above 110 % of the target yield of the version the shot is filed under), under target (below 90 %), a phase of its profile skipped because the shot stopped on weight, and fast flow (the cup flow over 3 g/s for a second at 80 % of the peak pressure; a turbo profile does it on purpose).
+
+The Curve check column's colour is the first entry's severity and it sorts by it; with no entry, a green `Pass` and then a grey `Unchecked` sort after the entries, in that order.
+
+A free-text expectation is not part of the Curve check ("checked by the review"), and the Curve check box on the shot page is always there: with nothing to list it says one plain line.
+
 ## The AI Review
 
 One structured model call about one shot, started only by **Review** on the shots table or the shot page. No chat tool, batch, timer or sync step starts one, and a discarded or unparsed shot is never reviewed.
@@ -61,6 +67,30 @@ One structured model call about one shot, started only by **Review** on the shot
 **Each claim is kept unless you reject it.** There is nothing to confirm: **Reject** takes a claim off the list and out of the chat, **Restore** puts it back. The review in force is the shot's newest *finished* review; a newer one that is running, failed or interrupted only changes the badge's words until it finishes. **Review again** asks once before replacing the current review.
 
 **What the chat is told** is every claim you did not reject, with its numbers, and the prediction stance. The summary never is. One filter does this for every surface that reads claims, and the SQL view `v_review_claims` filters it too, so a query cannot read what a person rejected. Both the glossary and the chat's rules say a review is weighed below the measured numbers and your judgement, and never on its own a reason to change a Recipe.
+
+The numbers behind a claim are the ones `POST /api/shots/{id}/evaluate` gives for the same expression, and each stores the value, the unit, the kind of channel and whether the expression's own comparison held.
+
+A claim whose evidence could not be measured at all is kept and marked like one whose comparison failed.
+
+The review's stance on the version's prediction is one of as predicted, partly, against or not shown, and it is shown like any claim.
+
+A finished review sets the previous one aside, rejected claims included.
+
+The AI Review column is built by code from the claims you did not reject and whose numbers bear them out: a failed free-text expectation (red for critical, amber for important) or a claim with a fault word (amber) gives a `phase: fault +N` entry, and a claim the numbers do not bear out stays in the Review box and in what the chat is told, but not in the badge or its "+N". With no fault it is a green `As intended` (a signature is in force) or a grey `No faults`, and it is empty for a shot nobody can review.
+
+The AI Review column sorts faults first, then `Failed to run`, `Reviewing…`, `No faults`, shots not reviewed yet, `As intended`, and last the shots nobody can review.
+
+Pressing a reviewed badge opens the row with its Review box expanded.
+
+The shot page and the open row draw the same boxes in the same order: Your judgement (open), the version's prediction (it does not fold), Curves, Review and Curve check (folded). Each box's state is remembered per browser; pinning a claim opens Curves, and a Curve check line for a free-text expectation opens Review at its answer.
+
+The **Review** group of the shot catalogue (three items, all base) says whether a shot was reviewed and how many claims were kept or rejected, lists the kept claims (free-text answers among them) with the numbers behind them, and says how the shot moved against its prediction.
+
+The SQL tool's `v_review_claims` holds the claims of a shot's newest finished review that were not rejected, and `v_reviews` only counts.
+
+The knowledge rules are on the **Knowledge** page: a small tier of dial-in heuristics (temperature by roast, the pressure matrix by roast and process, ratio and time by style, taste → suspect, telemetry → cause), each with its source and confidence, each editable, each with a switch.
+
+The rules are adapted from [gaggimate-barista](https://github.com/chall-tech/gaggimate-barista) (Charlie Hall, MIT) by way of gaggimate-mcp; the attribution is in the seed file.
 
 ## Running and failing
 

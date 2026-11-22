@@ -37,6 +37,12 @@ flowchart LR
 
 **The Claude Code CLI.** The Docker image ships a pinned CLI. The Claude Code panel under Settings → LLM can install the `stable` or `latest` channel, or an exact version, from npm into the data directory: checked against the registry's sha512, run once before the app switches to it, kept across restarts, and set aside once a newer image carries that release. Nothing updates on its own.
 
+A source checkout has no CLI in it: install it (`npm install -g @anthropic-ai/claude-code`) or point `claudeCodeBin` at it.
+
+The installed release is used while `claudeCodeBin` is left at `claude`, and the panel's **Use the image's version** button removes it.
+
+Each provider has its own credential and none is ever lent to another: `llmApiKey` for the OpenAI-compatible presets, `anthropicApiKey` for `anthropic`, `claudeCodeOauthToken` for `claude_code`.
+
 ## How calls run
 
 - **In the background, never inside the request.** The route opens a `running` row, hands the work to the task registry and answers 202; the page follows the event stream. The task name is the idempotency rule, so two tabs pressing the same button pay once.
