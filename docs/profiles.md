@@ -1,9 +1,13 @@
 ---
 title: Profiles and the machine
+parent: User guide
+nav_order: 3
 ---
 # Profiles and the machine
 
 ## What gaggiclanker writes to the machine, and who starts it
+
+*How this works: [Machine safety](safety-layers.md).*
 
 Nothing, until the **Writes** switch in the top bar, beside the machine status, is on. It
 is off by default; turning it on asks first, turning it off is immediate. With it
@@ -41,6 +45,8 @@ flush or a mode switch, which store nothing, is not.
 
 ## The profile list
 
+*How this works: [Profile sync](profile-sync.md).*
+
 With the **Writes** switch on, every sync ends by making the machine hold exactly the
 profiles that are **on the machine** in the list on the Profiles page. The first sync with the
 switch on takes the machine's profiles into the list as they are (the home screen is each
@@ -70,6 +76,8 @@ takes the machine's new name at the next sync, with Writes on or off; one rename
 its file renamed at the next sync with Writes on; renamed on both sides, it is a conflict.
 
 ## Putting a profile on the machine
+
+*How this works: [Profile sync](profile-sync.md).*
 
 A profile reaches the machine only by being on in the list with an active version.
 

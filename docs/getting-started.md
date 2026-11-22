@@ -1,5 +1,7 @@
 ---
 title: Getting started
+parent: User guide
+nav_order: 1
 ---
 # Getting started
 
@@ -12,6 +14,8 @@ from the list and group shots into versioned **Recipes** (bean + hardware + prof
 says), and
 talks the Recipes through with a tool-using chat, through whichever provider you
 point it at.
+
+*How this works: [Architecture](architecture.md).*
 
 It does not watch the machine. Nothing leaves the GaggiMate until you ask for
 it: the machine's own web UI already draws the shot that is happening now, and

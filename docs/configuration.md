@@ -1,5 +1,7 @@
 ---
 title: Configuration
+parent: User guide
+nav_order: 5
 ---
 # Configuration
 
@@ -7,6 +9,8 @@ The Settings pages are where everything is configured; the one setting that
 matters is the machine's host — the IP or hostname of the display board. Prefer a
 fixed IP: mDNS (`gaggimate.local`) does not resolve from inside a Docker bridge
 network, and the firmware disables mDNS entirely when HomeKit is on.
+
+*How this works: [Configuration and data](configuration-and-data.md).*
 
 **There is no configuration file, and no environment variable for any of it.**
 A setting is what the Settings page saved, or the default this release ships;
@@ -104,6 +108,8 @@ unset.
 
 ## Authentication
 
+*How this works: [Configuration and data](configuration-and-data.md#sign-in).*
+
 Off until you turn it on, because the common case is a box on a home network
 where the espresso machine itself has no auth, no TLS and no CORS —
 gaggiclanker is already the strictest thing on that wire. Turn it on if this box
@@ -151,6 +157,8 @@ and no TLS of its own. Put it behind a reverse proxy that terminates TLS if it
 is going to face the internet.
 
 ## Backup and restore
+
+*How this works: [Configuration and data](configuration-and-data.md#backup-restore-reset).*
 
 Everything is in one SQLite file under `DATA_DIR` (`./data` by default): shots with
 their raw bytes, Recipes, beans, profiles, chats, knowledge and every setting. **Settings →
@@ -209,6 +217,8 @@ The sidecars belong to the file they were written next to; leaving them beside a
 database reinstates the state you were trying to undo.
 
 ## Reset
+
+*How this works: [Configuration and data](configuration-and-data.md#backup-restore-reset).*
 
 **Settings → System → Reset** puts the app back to a fresh install. It deletes every shot,
 Recipe, bean, profile, chat, insight, edited prompt and setting, **the API keys and tokens**, the

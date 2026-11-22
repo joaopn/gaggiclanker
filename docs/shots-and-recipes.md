@@ -1,9 +1,13 @@
 ---
 title: Shots and Recipes
+parent: User guide
+nav_order: 2
 ---
 # Shots and Recipes
 
 ## The pages
+
+*How this works: [Sync and the archive](sync-and-the-archive.md), [Shot checks and review](shot-checks-and-review.md).*
 
 The sidebar has six rows: Shots, Chat, Recipes, Profiles, **Brew setup** (Beans, Hardware,
 Taste wheel) and **Settings** (one page per heading, with Knowledge just before Prompts).
@@ -35,6 +39,8 @@ by redirecting. The old Sync page's address, `/sync`, and its anchors redirect t
 same cards on the Device page.
 
 ## The experiment log
+
+*How this works: [Recipes and versions](recipes-and-versions.md).*
 
 A Recipe page is a record of experiments, one per version. A version's numbers are
 five things: the **profile** version, the grind as text and as a number, the
@@ -124,6 +130,8 @@ outcome you recorded yourself is left alone and the grade stays waiting. If you 
 cannot be accepted until the version is graded.
 
 ## The spread: how much your shots vary anyway
+
+*How this works: [Recipes and versions](recipes-and-versions.md#the-spread-how-much-the-shots-vary-anyway).*
 
 Above the log the Recipe page says how much its shots differ **when nothing in the
 version's numbers changed** — "Shot time ±1.8 s · from 9 repeat shots at 3 settings". It is the number

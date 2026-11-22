@@ -1,9 +1,13 @@
 ---
 title: Review and chat
+parent: User guide
+nav_order: 4
 ---
 # Review and chat
 
 ## LLM settings
+
+*How this works: [Language models](language-models.md).*
 
 A review, the chat and the drafts go through one provider, chosen with `llmProvider` under
 **Settings → LLM**:
@@ -43,6 +47,8 @@ from the YAML files in `gaggiclanker/prompts/`, and an edit takes effect on the
 next call without a restart.
 
 ## The review
+
+*How this works: [Shot checks and review](shot-checks-and-review.md).*
 
 A **review** is a model's look at one shot, and it is yours to correct. It is one structured
 call, started only by a click on one shot (the **Review** button in the shots table, or the shot
@@ -129,6 +135,8 @@ an exception, and a run cut off by a restart is marked `interrupted` at the next
 boot — neither silently disappears.
 
 ## The chat
+
+*How this works: [Chat and proposals](chat-and-proposals.md).*
 
 The **Chat** page (`g c`) is the other half of the LLM layer, and it is the
 opposite shape from a review: instead of one call with everything in front
@@ -505,6 +513,8 @@ The conversation needs an LLM provider (Settings → LLM); everything up to it,
 and the card, work without one.
 
 ## The chat's database tool (MCP)
+
+*How this works: [Chat and proposals](chat-and-proposals.md#the-chats-database-tool-over-mcp).*
 
 The `claude_code` provider runs the chat's tool loop inside the Claude Code CLI,
 and the CLI calls tools only through an MCP server. So for each chat turn it
