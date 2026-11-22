@@ -20,6 +20,16 @@ flowchart TB
   CL --> CHAT["What the chat is told"]
 ```
 
+A row of the shots table opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it.
+
+A first visit shows the columns Recipe, Time, Duration, Yield, Curve check, Rating, Balance, Discard and AI Review; Profile, Notes, Curve, Drink and Flags are in the column chooser, and a layout you chose is kept as you made it. The optional Curve column has a button in its heading that chooses which of the nine series it draws (pressure and cup flow by default; a shot with no scale draws pressure alone) and in which theme colour, remembered per browser. The Recipe column can be dragged narrower.
+
+The Rating column is the stars, coloured by their band. The Balance column is filled for your verdict and outlined for the machine's notes card. The Discard column is an outlined Discard button that then reads Discarded, and a click clears it (the judgement form has the same as a "Discard this shot" switch). **Hide discarded** (ticked by default, on the line under the buttons, remembered in this browser) leaves discarded shots out of the list.
+
+The filters narrow by date, profile, Recipe, rating, source and readability. A Recipe's experiment log links each version's shot count to *that version's* shots, and the filter says which version is on and removes it in one click. A shot's page names its profile as it is called now, linked, and says what the machine called it when the shot was brewed ("brewed as") when that was another name.
+
+Above the table, **Chat about** has one button per Recipe you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed.
+
 ## The Curve check
 
 Worked out every time a shot is read, from its stored numbers, where it is filed, and its profile version's **signature** in force. No click, no model, and a review never changes it. Refiling a shot changes it, because the target yield it is held against comes from the Recipe version.

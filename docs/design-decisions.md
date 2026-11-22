@@ -648,6 +648,8 @@ one but the board sync at the end of a sync, with the switch on
 version is active, a conflict's side, one click to make a proposal active) and written by the sync; no timer, no machine event, no judgement save, no push or rollback route
 and no tool a model calls starts a write). See [`safety-layers.md`](safety-layers.md).
 
+**The Taste wheel page shows all three tiers of the SCA/WCR Coffee Taster's Flavor Wheel**, with one list of picked notes for taste and one for aroma; the shot panel offers only the picked ones. Settings is one page of collapsible cards per heading, the ones to fill in first being Machine access and LLM; the LLM card also holds the knowledge and chat budgets.
+
 ## What runs where, in detail
 
 * **In the lifespan, before any request**: the configuration check (which

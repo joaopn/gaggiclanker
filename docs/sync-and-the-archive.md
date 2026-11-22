@@ -50,9 +50,13 @@ The write phase at the end is described on [Profile sync](profile-sync.md); what
 
 The machine's web UI exports a shot as `shot-<id>.json` and a profile as `profile-<id>.json`. Those files are the only way back for a shot the machine has already deleted. They go in through the drop zone on the Shots page, **Upload profile** on the Profiles page, `POST /api/import`, or `gaggiclanker import <folder|file|zip>` (with `--replace` to overwrite). The importer writes the same tables the sync does, so importing first and connecting the machine later is fine: a shot the sync later serves is recognised as the one already stored. Importing the same shot twice is a no-op; a file that does not parse is reported on its own and the rest of the batch still lands. An uploaded profile appears switched off (or as a version of the profile with its name), so importing never changes what a sync does.
 
+Beans have their own file: each coffee exports as JSON from the Beans page, and **Import JSON** reads one back (the file's id updates that coffee with the fields it carries, anything else adds a new one). Roaster and origin suggest the values already recorded, acidity, intensity and sweetness are each a clickable 1-to-5 scale (click the chosen step again to clear it), a coffee is archived when you stop buying it, and one no Recipe uses can be deleted.
+
 ## The connection to the machine
 
 `DeviceConnection` is the one owner of the machine client and the sync engine. Saving a new host, protocol, timeout or the sync switch rebuilds both live, with no restart. A change that would move the connection while a sync is using the machine is refused with a 409 naming it, and nothing is stored; a sync asked for during a change waits and goes to the new connection. `GET /api/device/status` reports what the client thinks of the connection, and the log carries a `device_connection_failed` line with the actual error on every failed attempt. A pass cut short by a rebuild or a shutdown is recorded as stopped, never as `ok`.
+
+While the machine is connected, the top bar's status also shows the boiler's temperature, read every fifteen seconds.
 
 ## Firmware behaviours the sync is built around
 
