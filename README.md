@@ -7,7 +7,7 @@
 A self-hosted archive and analyst for a <a href="https://gaggimate.eu">GaggiMate</a> espresso machine.<br>
 It keeps every shot the machine would delete, groups them into versioned Recipes, and talks them through with the language model you choose.
 
-[Getting started](docs/getting-started.md) · [Shots & Recipes](docs/shots-and-recipes.md) · [Profiles](docs/profiles.md) · [Review & chat](docs/review-and-chat.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md)
+[Documentation](https://joaopn.github.io/gaggiclanker/) · [Getting started](docs/getting-started.md) · [Shots & Recipes](docs/shots-and-recipes.md) · [Profiles](docs/profiles.md) · [Review & chat](docs/review-and-chat.md) · [Configuration](docs/configuration.md) · [Troubleshooting](docs/troubleshooting.md)
 
 </div>
 
