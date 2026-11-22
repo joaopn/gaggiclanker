@@ -1,7 +1,9 @@
 ---
-title: Device gotchas
+title: Firmware behaviours
+parent: Architecture
+nav_order: 3
 ---
-# Device gotchas
+# Firmware behaviours
 
 Fifteen firmware behaviours that shaped the sync engine. Every one of them was
 verified against the GaggiMate firmware source

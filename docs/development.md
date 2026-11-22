@@ -1,7 +1,11 @@
 ---
-title: Development
+title: Development and testing
+parent: Architecture
+nav_order: 11
 ---
-# Development
+# Development and testing
+
+How the repository is built, run without a machine, and checked. The commands are below and in [scripts/README.md](https://github.com/joaopn/gaggiclanker/blob/main/scripts/README.md); this page is how the pieces fit and why.
 
 ```bash
 uv sync                                                        # install into .venv/
@@ -72,21 +76,80 @@ clones the firmware to a scratch tree, patches its simulator shim, builds the
 real display firmware natively and runs the `-m simulator` tests against it.
 The reference checkout under `external/` is never modified.
 
+## Three ways to have a machine
+
+```mermaid
+flowchart LR
+  APP["gaggiclanker<br/>(same client code)"] --> FAKE["Fake machine<br/>device/fake.py"]
+  APP --> SIM["Firmware simulator<br/>real display firmware,<br/>compiled natively"]
+  APP --> REAL["A real GaggiMate"]
+  FAKE --- F1["Offline suite, every run,<br/>UI work with real shots"]
+  SIM --- S1["-m simulator suite,<br/>scripts/sim.sh test"]
+```
+
+| | The fake machine | The simulator | Exports |
+|---|---|---|---|
+| **What it is** | A real HTTP + WebSocket server in the package, loaded from `tests/fixtures`, reproducing the firmware's quirks (2 Hz telemetry, shot-saved events, half-written `.slog` files, the SPA served where binary was asked for, the three-client limit, the 1.10 refusals) | The firmware cloned to a scratch tree, its simulator shim patched, built natively; pinned to firmware 1.10 | `shot-<id>.json` and `profile-<id>.json` from the machine's web UI |
+| **Used for** | The whole offline suite, and a UI full of real shots: point `gaggimateHost` at it and press Sync | Checking the client against the actual parser and brew code: every profile fixture saved and read back, one profile synced, brewed and removed | Seeding an archive with no machine at all (`gaggiclanker import`) |
+| **Catches** | Everything the firmware's documented and reproduced behaviour can show | What only the real firmware does (it caught the identity frame being rejected on every real machine) | — |
+
+The reference checkouts under `external/` (the firmware, its docs, related tools) are read, never modified.
+
+## Testing shape
+
+A real app, a real SQLite file, a temp `DATA_DIR` per test, `httpx.ASGITransport`
+in process. No in-memory database and no mocked repositories, because WAL,
+foreign keys and `VACUUM INTO` only exist on a real file.
+The device layer runs against `gaggiclanker/device/fake.py`, a real server that
+reproduces the firmware's quirks; the opt-in `-m simulator` suite then runs the
+same code against the actual firmware compiled natively.
+
+Several tests guard **decisions** rather than features, so a later change cannot undo one by accident:
+
+| Test guards | Decision |
+|---|---|
+| The device client's public surface | Ten reads and seven gated writes, nothing else ([Machine safety](safety-layers.md)) |
+| Every route answers 401 with sign-in on | A router added later is covered the day it is mounted |
+| No tool reaches an accept, approve or delete | Only a person decides ([Chat and proposals](chat-and-proposals.md)) |
+| Outbound isolation | No credential is taken from the environment ([Language models](language-models.md)) |
+| Profile temperature in every query | One rule, repeated in SQL, pinned to the Python one |
+| One test file per upgrade level | Each frozen step still carries a database forward ([Configuration and data](configuration-and-data.md)) |
+| No retired words | Nothing a model is handed mentions the retired execution score or threshold bands: a number carries no grade |
+
+## What a change owes: `scripts/gates.sh`
+
+| Changed | Gates |
+|---|---|
+| Back end, tests, `pyproject.toml`, `uv.lock` | ruff check and format, mypy, pytest, then `npm run gen:api`, which must leave the generated API types unchanged |
+| `web/` | `npm run check` (Biome, TypeScript, Vitest), `npm run build` |
+| `device/`, `sync/`, `drafts/`, the simulator | `scripts/sim.sh test`, reported as owed, run with `--sim` |
+
+**Bugs get a reproduction before a fix.** A `scripts/repro_<bug>.py` exits non-zero while the bug exists and zero once it is fixed, verified on the base branch and the fix branch. The fix lands with a gated test that fails the same way, and the script goes with it; the ones still in `scripts/` cover what no gate can (building the image, running the simulator).
+
+## The front end
+
+`web/` is Vite + React 18 + TypeScript, Tailwind v4 with shadcn/ui, TanStack Query, React Router, react-hook-form with zod, Chart.js, Biome and Vitest. Its API types are generated from the back end's OpenAPI document, which is why `gen:api` is a back-end gate. The build goes to `web/dist`, which the app serves from `/` with a fallback for client-side routes; in development the Vite server proxies `/api` to the back end on 8042.
+
+## Shipping
+
+One image (`Dockerfile`) with the built UI and a pinned Claude Code CLI; `compose.yml` runs it with host networking by default (so `.local` names and a long-lived WebSocket work without NAT) and a `./data` bind mount. The entrypoint starts as root only to hand `./data` to the app user, then drops privileges before any application code runs. `CHANGELOG.md` records what each release changed, including every breaking change and what it does to existing data.
+
 ## Documentation
 
-* [`architecture.md`](architecture.md) — what the pieces are and why
-  they are arranged this way.
-* [`device-gotchas.md`](device-gotchas.md) — the twelve firmware
+* [Architecture](architecture.md) — what the pieces are and why
+  they are arranged this way; [Design decisions](design-decisions.md) has each
+  decision in full.
+* [Firmware behaviours](device-gotchas.md) — the fifteen firmware
   behaviours that shaped the sync engine. Read before touching `device/` or
   `sync/`.
-* [`safety-layers.md`](safety-layers.md) — what can harm the machine,
+* [Machine safety](safety-layers.md) — what can harm the machine,
   and the four layers that will guard a write when there is one.
-* [`CHANGELOG.md`](../CHANGELOG.md) — what is in each release.
+* [`CHANGELOG.md`](https://github.com/joaopn/gaggiclanker/blob/main/CHANGELOG.md) — what is in each release.
 
 ## Contributing
 
-[`architecture.md`](architecture.md) holds the conventions — the
+[Design decisions](design-decisions.md) holds the conventions — the
 response envelope, pydantic on every database write, repro-first bug fixing,
 the schema rule and the list of device gotchas worth knowing before
-touching the sync code. [`CHANGELOG.md`](../CHANGELOG.md) has what landed in each
+touching the sync code. [`CHANGELOG.md`](https://github.com/joaopn/gaggiclanker/blob/main/CHANGELOG.md) has what landed in each
 release.

@@ -1,0 +1,657 @@
+---
+title: Design decisions
+parent: Architecture
+nav_order: 1
+---
+# Design decisions
+
+The reference behind the [Architecture](architecture.md) overview: each decision, why it was taken, and where the code holds it.
+
+## The one fact that drives everything
+
+**The machine is a buffer with about 300 KB of heap that deletes old shots under
+storage pressure. gaggiclanker is the archive.**
+
+That is why the raw `.slog` bytes are stored before anything tries to parse
+them, why a shot that fails validation is quarantined rather than dropped, and
+why the only thing this box ever writes to the machine is a profile. Losing a
+shot to a parser bug is worse than storing one nobody can read yet: the bug can
+be fixed next week, and by then the machine's copy is gone.
+
+**Filling the archive is something a person asks for.** `POST /api/sync/run` —
+the button on the shots page — is the only thing that starts a pass over the
+shots, the profiles or the notes. There is no timer and no pass triggered by a
+device event. The engine that ran on its own duplicated what the machine's own
+web UI already shows and spent the device's two HTTP slots doing it; what an
+archive is actually asked for is "I have pulled some coffee, take it". The one
+exception is identity — one `res:ota-settings` frame plus one `GET
+/api/settings` at startup and on every connect — because it is what tells the
+header whether the machine is there at all.
+
+**The archive holds one machine.** `machines` is a one-row table — `CHECK (id =
+1)` — describing whatever host is configured now, and nothing else in the schema
+carries a machine id. The host is a setting rather than an identity, so pointing
+the container at a new address updates that row and every shot, profile and Recipe
+stays attached. A shot is unique by the number the machine gave it **and** its
+start time, because the machine's counter restarts after its settings are erased
+and a later shot can carry an old number. Grinders stay
+plural, because a kitchen really does have several and a grind number only
+means something on the grinder it was set on — which is also why any number of
+Recipes may collect shots at once: several grinders means several beans loaded, and
+the archive tells them apart by the profile a shot was brewed with. A grinder's
+step unit says which way a numbered dial runs (lower is finer, or lower is
+coarser), and every conversation is handed the grinder as its record describes
+it, notes whole (`db/repos/grinders.py::grinder_lines`): a Recipe's or a design's
+its own grinder, a general one every grinder in the kitchen.
+
+## The layers
+
+| Layer | What it owns |
+|---|---|
+| `api/` | One router per resource. Routes parse input and call services; they never build a response by hand. |
+| `review/`, `llm/`, `knowledge/` | A shot's review: one structured LLM call about one shot, started only by a person's click, given the shot's own information (checks first; never the judgement, the machine's note, the label, another shot or an earlier review), the Recipe version's numbers and prediction, the signature's free-text expectations in force, the profile it brewed and the rules and passages its telemetry selects. Its output model is built per call (this shot's phase names, this review's expectation ids, a `prediction` key only when there is one) and writes claims, each tied to a window with metric-language evidence **the server evaluates**; the finished `shot_reviews` row and its `review_claims` are written in one transaction, every claim kept (`confirmed`) until a person rejects it. `reading.py` works the Curve check block and the review block out at read time; the chat is told every claim not rejected. The knowledge base's three tiers: the rules, the prose, and the insights you have confirmed. |
+| `drafts/` | Profile drafts: the write gate, generation from advice, and the four safety layers. Holds the gate every write to a machine passes. `board.py`/`board_plan.py`/`board_versions.py` are the profile list (every profile a person has had, switched on or off the machine, starred or not, with its versions and one active; a person puts a draft on it, which approves it, makes a version active, resolves a conflict) and the write phase of a sync that makes the machine hold exactly the profiles that are on, only with the switch on, built on `machine.py`'s `place` and `remove_profile`; `db/repos/profile_list.py` fills the list once at boot from everything stored; it is the only path from a draft to the machine. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and the route-facing draft service (drafting, refining, discarding, recording a Recipe version) holds no machine connection either. |
+| `starting/` | The starting-point wizard: the similar-Recipe query, the context it assembles, the three-option output contract, and the accept that turns one into a Recipe and a draft. |
+| `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
+| `chat/` | The tool loop, the opening context a Recipe conversation starts from — first the profile the version brews (and the compared version's, when it is another), as stored, then the experiment: ledger with each version's averages, spread, evidence, the version's newest shots — or, while the Recipe is being designed, the design brief and its evidence (`design_context.py`); a general conversation's is the kitchen's grinders — and the streamed, resumable run. |
+| `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary, generated from the catalogue in two halves: the base half in the chat prompts, the extended half in front of a shot read in detail, once in what the model is sent. |
+| `signatures/` | What a profile is for: `service.py` (proposing, carrying a signature to a new profile version, a Recipe version's override; what an agent proposes is written in force, and a person rejects or restores it), `checks.py` (a shot's checks, worked out when it is read, in a fixed number of queries, from the expectations in force of its profile version) and `lines.py` (what a conversation is told). Only an expectation in force (status `confirmed`) is ever a check, a badge or an agent's input; a rejected one, and a carried one whose phase is gone, never are. |
+| `sync/` | The index diff, the shot download, the profile and notes mirrors. |
+| `domain/` | The `.slog` and index parsers, the diagnostics (numbers only: resistance, adherence, the summary statistics), the per-phase metrics and the shot's facts (`phase_metrics.py`: what ended each phase, the cup at its end, the flows, the water, the profile's phases never begun, the first fast-flow window; `unsampled.py`: the phases that ended before the machine logged a sample of them, kept as a shot-wide fact and never as a row of the phase list, whose readers all divide by a sample count) the warnings (`warnings.py`: one pure function from a shot's stored numbers, its filed version's target yield and its profile's phase names) and the signature (`signature.py`: the fault-word table, the validation a proposal passes and the one function that merges a shot's warnings with the results of its profile version's expectations in force into an ordered list of checks, red, amber, grey, held, context, free text). Pure functions over bytes and numbers. There is no score and no band anywhere: a number carries no grade. |
+| `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods: five profile operations, `start_flush` and `change_mode` — nothing else. Only profiles are ever stored on the machine; `start_flush` (`POST /api/device/flush`, the top bar's Flush button, shown only with the switch on) runs the machine's own flush once, in brew mode with nothing running, and is not audited; `change_mode` (`POST /api/device/mode`, the top bar's "Switch to Brew" / "Switch to Standby" button, shown only with the switch on) puts the machine in brew mode or standby with nothing running and the machine ready, waits for the state frame that confirms it, and is not audited. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded profile or one that is switched off (guarded by a fresh load), the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
+| `db/` | Repositories — the only code that writes SQL — plus the schema file, the backup download and the restore (stage, check, swap at shutdown) and the reset (a marker, finished at the next boot before the database opens). |
+| `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
+| `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
+
+Dependencies point downward and never back up. `domain/` knows nothing about
+HTTP; `db/` knows nothing about the device; `device/` knows nothing about the
+database.
+
+## Decisions worth knowing
+
+**Every response is the same envelope**, success or failure, including an
+unhandled crash: `{ok, data | error, meta}`. `meta.request_id` matches the
+`x-request-id` header and every log line for that request, so a user reporting a
+failure hands you the one string that finds it. The boundary that guarantees
+this lives in a pure-ASGI middleware rather than a FastAPI exception handler,
+because Starlette installs its own error handler *outside* every application
+middleware — anything caught there has already lost the request-id context.
+
+**Middleware is pure ASGI throughout.** `BaseHTTPMiddleware` buffers responses
+through an anyio task group, which is fatal to a server-sent event stream, and
+the sync feed a sync reports its progress on is one.
+
+**Every write to the database goes through a pydantic model.** No dicts into
+SQL. Repositories are the only code that writes SQL, services hold the logic,
+routes parse and delegate.
+
+**A Recipe version's numbers are immutable; its prediction and its outcome are not,
+and each is writable at a different time.** The numbers are five fields — the
+profile version, the grind (text and number), the dose and the target yield —
+written once and changed only by appending another version. There is no brew
+temperature among them: the machine heats to what the profile states, so it is
+read from the version's profile document wherever it is shown, and changing it
+means drafting or editing the profile.
+
+**A version also carries a drink and drink notes, which are not among those five.** They are
+inherited like the numbers (`RECIPE_FIELDS`), but they say what the shot is for, not how it was
+made: they play no part in the repeat grouping, and a different drink suggests a major version.
+`domain/drinks.py` is the one list of drinks: the `CHECK` on `recipe_versions.drink`, the API's
+enum and `/api/vocab` are written against it and a test reads each back. `NULL` is no drink stated
+(every version made before drinks were recorded), never Espresso. The knowledge entry for a drink
+is handed to a conversation or a call whole, outside the excerpt budget (`knowledge/drinks.py`).
+
+**`domain/profile_recipe.py` is the rule for reading it** — the profile's own
+`temperature` when it is a number above 0, because the firmware writes 0 for
+"not set" — and Python reads it there and nowhere else. SQL cannot call Python,
+so four queries repeat that one sentence: the version select in
+`db/repos/recipes.py`, the similar-Recipes query in `starting/similar.py`, and the
+`profile_temperature_c` column of `v_recipe_versions` and `v_shots` (defined in
+`db/schema.sql`). Repetition of a rule is drift waiting to
+happen, so `tests/recipes/test_profile_temperature.py` pins every copy to the
+Python one: it stores a table of profile documents — the field missing, null,
+0, negative, an integer, a float, and shapes only a hand-edited row could hold
+— and asserts each query answers exactly what `profile_recipe` answers. The prediction — what the version was
+expected to do, against which earlier version — can be written and re-written
+only while the version has no shots and no grade, because one typed afterwards
+would grade itself. The outcome, somebody's grade of that prediction, needs a
+prediction and a rated shot that was not discarded before it can be recorded, and
+can be changed or cleared for ever after. `recipe_versions` carries all three and
+the comment on it in `db/schema.sql` says which is which. **A version has a
+name and nothing else of the kind**: `version_major`.`version_minor` is what every screen, prompt and tool shows ("v1.1"), an identifier like a
+tag, numbered by `_insert_version` in the insert's own transaction from one rule
+(the person's answer if given, else minor; a Recipe has one profile, so no version switches profiles; `RecipesRepository.follow_profile` is the one function that appends a Recipe version because its profile moved) —
+with `db/repos/version_names.py` serving the next names a button promises from
+the same arithmetic. There is no ordinal: the order
+versions were made in is `created_at` (the row id only breaks a tie), and the
+version the Recipe is on is `recipes.current_version_id`, written by every append and
+by a revert. A minor is numbered from the current version's major, so after going
+back to v1.2 it is v1.3 (or the next free minor).
+
+A Recipe is live or archived (`recipes.archived`): an archived Recipe (the bean
+is finished with) receives no shots, and a live one files every shot brewed on
+its profile. There is no other switch: a profile has at most one Recipe, so
+there is never a choice between live Recipes to make. A shot is filed when the
+live Recipe that has its profile names that profile version on its current
+version; otherwise it stays in the "needs a Recipe" inbox, because a mis-filed
+shot pollutes a trend chart nobody re-reads while an unfiled one is on a list
+with a button next to it. Archiving a Recipe takes everything it has off the machine, in one
+transaction (`RecipesRepository.archive`): its pins are unpinned and its own profile's
+"On the machine" switch is switched off, through the same board write the Profiles page's switch
+uses (the star is kept, a designing Recipe with no profile changes nothing), so the next sync with
+Writes on removes the files through the switch's usual removal. Unarchiving a Recipe files its
+next shots again, switches its profile on (whether or not it was on before the archive) and
+leaves the shots that arrived meanwhile in the inbox and the pins off. The profile list says
+whose profile it is while the Recipe is archived (`archived_recipe`, beside `recipe`, which keeps
+meaning "a live Recipe brews this"). The inbox leaves out quarantined shots and discarded shots
+(`NEEDS_RECIPE_SQL` in `db/repos/shots.py`, read by the count, the filter and the
+button alike): neither is waiting for an answer.
+
+Both windows are enforced in `RecipesRepository`, beside the other rules that
+depend on rows in another table. A trigger could raise on the first one, and
+that is the reason it does not: the rule would then be written twice, in two
+wordings that can drift; the refusal would reach the client as a constraint
+failure rather than as an error code the route turns into a sentence
+(`VERSION_HAS_SHOTS`, `VERSION_HAS_OUTCOME`); and a test of it would have to go
+through SQL instead of through the method every caller uses. The window is
+honest rather than airtight — unfiling every shot and clearing the grade opens
+it again — and it is meant to be: it guards against writing a prediction down
+after the fact, not against somebody setting out to deceive themselves.
+
+**The spread is a pooled within-version deviation, and the app works it out, not
+a model.** Shots sharing all five fields are repeats; each group's shots
+are measured against their own mean and the squared distances are pooled over
+the Recipe, `sqrt(sum_g sum_i (x_gi - mean_g)^2 / sum_g (n_g - 1))`. Pooled rather
+than the deviation of all the Recipe's shots, because a Recipe's shots are *meant* to
+differ — that figure would measure the dial-in and grow every time a change
+worked — and rather than the deviation of the one version with the most shots,
+because a Recipe is usually many versions of two or three shots each and the
+pooling is what turns those into one figure. Going back needs no special case:
+the shots filed under a version after the Recipe returned to it land in the same
+group as its earlier ones.
+
+Three decisions sit on top of it. **Three degrees of freedom** before it counts
+as measured: below that a sample deviation is mostly noise about itself, and
+"±0.4 s" read off two pairs would be believed by a reader who cannot see how
+thin it is — so it is still served, flagged, and not used. **Floors** per
+measure, conservative first numbers rather than settings, because a floor tuned
+per Recipe would be tuning what counts as evidence. **Two standard errors** of the
+difference between two means, `2 * spread * sqrt(1/n_this + 1/n_other)`, floored
+at the floor: it is the ordinary "outside the noise" bar and the one yardstick
+that shrinks properly as either side collects shots, while the floor stops a
+spread that has collapsed to nothing from making every difference significant.
+
+Two smaller choices follow from the same worry about being believed. A
+difference and the yardstick it is held against are **served one decimal finer
+than the means**, because at the means' own precision "32.0 minus 30.0 is +2.0,
+beyond 2.0" reads as a contradiction of its own verdict; the comparison itself
+is made on the unrounded values, so the display can never decide a grade. And
+**the front end is served the precision** in `/api/vocab` beside the label and
+the unit, rather than formatting to a rule of its own, which would either invent
+digits or drop the one that mattered.
+
+The arithmetic is `domain/spread.py`, pure, with hand-computed tests: what a
+prediction is graded against has to be something a person can redo on paper.
+`RecipesRepository.counted_shots` is the only SQL — it decides which shots count
+(not quarantined, not incomplete, not discarded; unrated shots do count) and
+reads each measure where it already lives, two columns, three paths into the
+diagnostics stored at ingest, and the judgement's rating. Nothing is derived a
+second time. Grouping sorts by shot id before it sums, and for one specific
+reason: the pooled total is accumulated across groups with `+=`, a left fold,
+and floating-point addition is not associative — a Recipe with one scattered version
+and two tight ones totals differently depending on which is added first. A
+figure that moved when a query's ORDER BY changed would be impossible to
+explain, so a test walks every permutation of such a Recipe.
+
+**A version is a dead end when it is not on the live line.** The live line is
+walked backwards from the Recipe's current version (its pointer, which a revert
+moves) through the fork history, `parent_version_id`, as in version control; a
+row an old roll back wrote (`restores_version_id`, never written now) steps to
+what it restored instead. Everything the walk does not pass through is a dead
+end, and the log mutes it. Stated as a walk rather than as a span between a
+revert and its target, because the two stop agreeing the moment reverts overlap. `dead_end_ids` is a pure
+function over the version list the page already holds, and it terminates on data
+no route can write (a forward or self reference, a parent cycle) because a
+`while` over a linked list is the shape that would otherwise hang the page.
+
+**Settings are one declaration each.** A row in `SETTINGS_REGISTRY` gives you
+the database column, the API field, the validation and the UI control. A setting
+is what the database holds or what the declaration defaults to — nothing else,
+and no environment variable, so there is no second surface that can disagree with
+the Settings page. Only what the process needs before it can open the database
+(`DATA_DIR`, `HOST`, `PORT`, `LOG_LEVEL`, `LOG_JSON`, `WEB_DIST`, `CORS_ORIGINS`)
+comes from the environment; a variable that used to configure a setting is named
+once at boot (`setting_env_ignored`) and otherwise ignored, and the one that used
+to allow writes to the machine stops the boot instead.
+Secrets are write-only through the API: a `GET` returns a four-character hint.
+
+**Credentials never come from the environment.** No setting reads a variable at
+all, the sign-in settings included: they are entered in the Settings page and
+live in the database. A boot that finds one of the variables that used to carry a
+credential set refuses to start, naming it, rather than start with authentication
+silently off or a key still sitting in a compose file.
+
+**Every credential for an external service lives only in the database** — and
+that includes what libraries and child processes would pick up on their own.
+Outbound HTTP clients are built by `infra/outbound.py` with `trust_env` off (no
+`.netrc`, no proxy taken behind the app's back), honour an environment proxy only
+when it names no user or password, and do not follow redirects. The SDK clients
+on top (`llm/providers/`) are always handed the stored key and an explicit base
+URL, and discard the SDKs' environment headers, organisation and project
+variables and profile discovery; the Claude Code CLI child gets an allow-listed
+environment whose only credential is the stored token. The boot refusal covers
+the SDKs' credential variables and any proxy variable carrying credentials, as
+an upgrade guard; `tests/llm/test_outbound_isolation.py` sets every candidate to a
+sentinel and inspects the requests. The GaggiMate has no authentication today,
+and its client does not read the environment either. Any future outbound
+connection follows the same rule: its credential is a secret setting, and its
+HTTP client comes from `infra/outbound.py`.
+
+**The machine connection is one object, and a settings change rebuilds it.**
+`DeviceConnection` owns the device client and the sync engine; routes and the
+profile-draft service ask it for the current client at the
+moment they act rather than keeping one. Changing the host, the protocol, the
+timeout or the sync switch through `PATCH /api/settings` compares the effective
+values before and after and, if they moved, stops the engine's loops and the
+client and builds new ones — with no restart, and with the same write gate over
+the same settings. The change and the rebuild happen under one lock that every
+machine-bound operation also registers through, so a change that would move the
+connection while a sync (the board's write phase included) is using the machine is a 409
+naming it, and nothing is stored. A sync asked
+for while a change is being stored waits for the change and goes to whatever
+connection it leaves. An identity read is not held to that: it is cut, and the
+new connection reads identity again on connect. A pass cut short — by a rebuild
+or by shutdown — is recorded as an error saying it was stopped, never as `ok`,
+and a rebuild that fails part-way leaves no connection at all, so the next save
+tries again.
+
+**The schema is one file, and an older database is upgraded at start.**
+`db/schema.sql` builds the whole database and the few rows a new one starts with (the one
+machine, the flavour picks); a database that does not exist yet gets it in one transaction. It
+ends with `PRAGMA user_version = N`, the database's upgrade level, which is the number of steps in
+`db/upgrades`. An existing database is compared with what the file builds before anything opens
+it: tables with their columns and definitions, indexes, foreign keys, views and triggers, and the
+level, by structure rather than text, so editing a comment or the layout of the file never
+refuses a database. A difference stops the app with one plain line and a log event naming what
+differs, and the file is never altered or deleted.
+
+A database an older version made, in exactly the state that version left it, is carried forward
+instead: at the app's own start, before anything opens the file, the app checks there is room,
+writes a copy beside it (`upgrade-backup-L<level>-<time>.db` in the data directory, kept until the
+person deletes it), runs every step from the file's level up in **one transaction**, and before
+committing checks that the result is exactly what the schema file builds, that no reference
+breaks that held before, and that SQLite's integrity check passes. Any failure rolls back, removes
+the copy and refuses to start with the database as it was; a crash mid-way leaves an uncommitted
+transaction, so the next start begins again. A step is frozen code with raw SQL (it imports nothing
+from the rest of the app, so a repository that changes later cannot change what an old step does),
+and the schema of every level it passes is kept as a checksummed file beside it. Only the app's
+own start upgrades: `import` and `mcp` refuse a database that is behind and say to start the app
+once. A backup from an earlier version is upgraded on its staged copy by the same steps when it
+is restored, and the preview says so. A database made by a newer version is refused and says that.
+A schema change ships its step in the same commit. Data that has to move without a step is derived
+data, rebuilt at boot from what is stored (`DERIVATION_VERSION`).
+
+**A profile version belongs to one profile, and a draft says what it is.**
+`profile_versions.board_id` is the profile-list row a version is a version of, and a version is
+unique by its brew within a profile (and among those that belong to none: a draft for a new
+profile, an imported file, a machine file that has not joined the list, the empty baseline). A
+profile never takes another profile's version. Every path that lists a version on a profile goes
+through one function (`ProfileBoardRepository.version_for`): a version on no profile is taken
+over, a profile's own is itself, and another profile's becomes a copy of that profile's own,
+carrying the signature and replacing the profile's references to the original. So two profiles
+that brew the same thing have two versions (a Duplicate, a pin's copy), "the same profile" is
+the version's owner, and every writer says whose version it stores (`ensure_version` has no
+default for the owner). The sync's mirror stores what a file holds as a version of the profile
+standing on it; a file no profile stands on holds the version exactly one profile owns with its
+brew, else one that belongs to none.
+
+**Two hashes, never one.** A version of a profile is what it brews: `brew_hash` is over the
+canonical form without the label and is the version's identity (`profile_versions.content_hash`,
+found by `ensure_version(owner, brew)`), so the same brew under another name is the same version.
+A version on **no** profile has no profile name and is the document it came as: unique by brew and
+its stored label (`idx_profile_versions_unowned`), and a machine file no profile stands on holds
+the owned version only when that profile is called what the file is called, else the loose
+version of its brew under its own name. The name
+is the profile's (`profile_board.label`). Whatever guards or checks the machine is the
+`document_hash`, over the canonical document with its name: the round trip after a save, the
+delete's fresh-load guard, the audit's payload hash and the conflict's `content_hash`. One
+function builds a document from a version, `document_for(version, name)`, with the owner's
+current name (a new profile's draft: the draft's); the label stored with a version is only the
+name it was first stored with. The board plan reads a machine file as its brew and its name
+(`FileContent`) and compares it with the profile's active version under the profile's machine name
+(its name, then the current version label of the Recipe that brews it, if any:
+`domain/machine_names.py`; the name itself never carries the version), and
+with what the app recorded for the file (`profile_board.device_label`, written beside
+`device_version_id`). The brew and the name are decided apart (`judge_file`): a brew the profile
+never had is a conflict, a name only the app changed is saved over the file, a name only the
+machine changed is taken by the profile (a read, with the switch off too), and a name both sides
+changed, or the machine's name being another live profile's, is a conflict. A profile is one machine id
+for good: a sync saves its active version over its own file under a fresh-load guard.
+
+A draft is a change to one profile or a new profile with a name of its own, decided once when it
+is made and stored on it (`profile_drafts.new_profile`, `destination_board_id`, `label`). A change
+goes to the profile its base belongs to and carries
+that profile's own name; one drafted before its profile was on the list stores no destination and
+goes to whichever profile owns its base when it is read. A new profile carries the name it was
+asked for, and the agent's draft tool asks for one with `new_profile_name`. The document's label
+is built from the stored name and decides nothing, and a hand edit whose label is the base
+profile's name is read as a change at that edge, once. `destination_now` and `place_draft`
+(`db/repos/lineage.py`) answer what a put does, for the constructor, the name check, the page's
+landing, the standing and the put alike; a put never renames the profile it changes. The mirror
+also stores the name each machine file has (`device_profiles.label`), on every sync.
+
+**The LLM call does not run inside the HTTP request.** The route opens a
+`running` row, hands the work to the app's `TaskRegistry` and answers 202; the
+page follows the event stream. `docker stop` allows ten seconds, and a request
+holding a two-minute provider call would be killed mid-flight with the browser
+still waiting. The task name is the idempotency rule — claimed synchronously, so
+a second tab pressing the button gets the running row rather than a second bill.
+
+**A provider failure is a stored row, not an exception.** A batch of sixty shots
+cannot be taken down by the eleventh. A run cut off by a restart is marked
+`interrupted` at the next boot, along with any sync run left `running`, so
+nothing is left as a spinner nobody can clear.
+
+**Auth is off unless configured, and the guard covers everything.** Sign-in
+is configured in the database only — Settings → Authentication — and never
+through the environment. One
+pure-ASGI middleware in front of every `/api/*` route — SSE streams and the
+OpenAPI document included — with `/health`, the two public auth routes and the
+web bundle outside it. A test enumerates the application's own OpenAPI document
+and asserts each route answers 401, so a router added later is covered the day
+it is mounted.
+
+**A change an agent proposes is a row, and only a person turns it into a
+version.** `propose_recipe_version` used to append a `recipe_versions` row the moment
+a model asked for one: the next shot was filed under a version nobody had agreed
+to, with no prediction on it. It now writes a `recipe_version_proposals` row that
+changes nothing, and the version appears when somebody presses **Accept** —
+`POST /api/recipes/{id}/proposals/{pid}/accept`, in one transaction that re-checks
+everything the moment it runs (the proposal is still waiting, the Recipe has not
+moved on, the current version's prediction has been graded) and then appends the
+version through `RecipesRepository.append_version`, which exists so that append can
+be part of somebody else's transaction rather than opening its own.
+
+**A grade an agent proposes is a row too, and only a person records it.**
+`propose_outcome` writes a `recipe_outcome_proposals` row (one waiting per version,
+a newer one superseding it) that changes nothing: the version's own outcome
+columns are written by a person's press (`POST /api/recipes/{id}/outcome-proposals/
+{pid}/accept`, `/change` with another outcome, `/dismiss`) and by the Recipe page,
+through the one guarded write `RecipesRepository.grade_in_transaction`, in the same
+transaction that marks the proposal. A waiting, dismissed or superseded grade is
+read by nothing but its own version's conversation (the opening context), so the
+ledger, the track record and every other version's context stay byte-identical
+to a Recipe without it. The open-outcome block that stops a next change reads
+`RecipeProposalsRepository.outcome_blocks`: a waiting grade for the current version
+lifts it, and accepting that change records the grade first, in its one
+transaction (`PROPOSAL_GRADE_UNRECORDABLE` if the shots behind it are gone). The
+Recipe chat's `draft_profile` reads the same function; its check lives in the tool,
+not under `drafts/`.
+
+**An insight belongs to the Recipe it was learned in.** `knowledge_insights` carries
+`recipe_id` (NULL is general), `recipe_version_id` and `dismissed`. `record_insight` in
+a Recipe chat writes the Recipe and the conversation's version and no attribute scope;
+`InsightsRepository.for_recipe` is the one selection (this Recipe's confirmed, then the
+confirmed general ones whose scope `scope_matches` its attributes; each kind oldest first)
+behind the opening context, `get_insights` and the Recipe page's `?recipe_id=` list, and
+another Recipe's insights are never in it. The order is what lets a Recipe insight saying a
+general one does not hold here win: the opening context lists this Recipe's own first,
+newest first, then the general ones, newest first, and its cut at `INSIGHTS_SHOWN` drops
+general insights first. Add is the confirm switch, Dismiss its own route,
+and neither is a tool. The agent-written insights that existed were placed once at
+boot by `InsightPlacementBuilder` (marker table `insight_placement_build`), which asks
+the live `scope_matches` and the Recipe's filed shots rather than repeating the rule
+in SQL.
+
+**A general insight can be asked for by the agent, or saved from the person's own
+message.** `request_general_insight` (Recipe, General and Design chats) writes an ordinary
+unconfirmed general row (`source = 'user'`, the conversation as `thread_id`, and
+`from_message_id`, the newest of the person's messages that contains the quote it was
+given): it is refused without a quote found in one of that conversation's `user` messages,
+and in a Recipe or Design chat a scope can only be one of the options
+`InsightsRepository.recipe_scope_options` returns for that Recipe, the same function the
+picker's `GET /api/knowledge/scope-options` serves. Only the person's Add (`PATCH` with
+`confirmed`) confirms it, and Dismiss (`POST .../dismiss`) accepts a waiting general
+request; neither is a tool. `POST /api/knowledge/insights` with `from_message_id` is the
+"Save as general insight" under a message of theirs, and `GET /api/chat/threads/{id}` serves
+each person's message with the added insights still made from it (`saved_insights`). A
+general insight's prompt line says who it is from (`your note` for `source = 'user'`, `from
+Find patterns` for an approved pattern, nothing for the older ones), and each opening context
+ends with one block, `general_insights_block`, telling the conversation what became of the
+requests it made and the messages saved from it.
+
+**A general insight is replaced or deleted only on the person's own words.**
+`request_general_insight` takes `replaces_insight_id` and `propose_insight_deletion` takes
+`said`; both are refused without a quote found in the conversation's `user` messages (one
+function, `_quote_problems`) and only for an insight `InsightsRepository.told_general`
+allows: added, general, and, in a Recipe or Design chat, one whose scope matches the Recipe
+(the rule `for_recipe` uses). A replacement is a waiting general request with `replaces_id`;
+Add runs `_add_in_transaction`, which deletes the old insight in the same transaction only
+while it is still an added general one. A deletion is a `recipe_insight_deletions` row whose
+`recipe_id` is NULL (upgrade step 11), answered by `/api/knowledge/insight-deletions/{id}` and
+its `accept` and `keep`, never by a Recipe route. Delete refuses, and marks the proposal
+stale, when the insight's words are no longer the ones the card showed. Shots never lead to
+either: nothing here can be called by an agent that confirms, deletes or keeps.
+
+**An insight rests on versions, and an agent's removal is a proposal.** The
+`knowledge_insights` carries `rests_on_json` (each version the insight rests on with the
+outcome it had when written, never rewritten), `replaces_id`, `replaces_text` and `replaced`,
+and a table `recipe_insight_deletions` shaped like the outcome
+proposals (one waiting row per insight by a partial unique index; a newer one marks
+the waiting one `superseded`; `thread_id` cascades, so the card lives and dies with
+its conversation; `insight_text` keeps the words the card showed). `InsightRow`
+reads what an insight rests on in the same query as the row (a join through
+`json_each` onto `recipe_versions`), so the outcome *now* is always the version's own;
+`InsightRow.render` is the one line the opening context and `get_insights` carry
+(id, learned at, rests on with the changed mark, shots). `InsightsRepository.propose`
+checks what it rests on and what it replaces inside the transaction that writes
+(this Recipe's versions with a recorded outcome; an *added* insight of the same Recipe).
+**Who may remove an added insight: a person.** Every removal is
+`InsightsRepository.delete_in_transaction`, run by the Recipe page's and Knowledge
+page's Delete, by `InsightDeletionsRepository.accept` (the deletion card's Delete,
+`POST /api/recipes/{id}/insight-deletions/{pid}/accept`, with `/keep` its other button)
+and by the confirm of a replacement (`set_confirmed(…, True)`, one transaction that
+deletes the old one if it is still added, else adds the new one on its own and
+records `replaced = 'old_changed'`). The one delete marks every waiting deletion
+proposal for the insight `stale` and lets a waiting replacement that named it become
+an ordinary insight, so nothing waits on what is gone; a conversation's delete
+(`ChatRepository.delete_thread`) removes the insights it proposed that were
+dismissed in the same transaction. No tool reaches any of these; the registry and
+bytecode walk in `tests/tools/test_no_proposal_is_accepted_by_a_tool.py` names them.
+
+**Find patterns across Recipes** (`gaggiclanker/patterns/`, shaped like Review). One structured
+call, no tools, started only by `POST /api/knowledge/patterns/runs` (the Knowledge page's
+button; a registry task named `patterns`, a 202 with the `running` row, boot marks a left-over
+`running` row `interrupted`, a provider failure is a stored `failed` run). Its input
+(`build_patterns_input`) is the confirmed insights of every Recipe that is not being designed,
+ordered by Recipe then insight id, the confirmed general insights and the dismissed proposals, and is
+stored verbatim on the run (`pattern_runs`). `filter_proposals` drops, before
+storage and counting each reason on the run, a proposal that rests on fewer than two Recipes, names
+an insight (or a replaced general insight) it was not given, uses `profile_style`, or has a
+scope that fails the live `scope_matches` over `recipe_attributes` for any source Recipe. A run writes
+only its own rows (`pattern_runs`, `pattern_proposals`), and when it finishes it deletes every
+proposal of every earlier run (in any state) and blanks every earlier run's `input_json`, in the
+same transaction: copies of insight text live one run, so after an insight is deleted its words
+can survive in the newest run's input and proposals until the next run finishes, never longer;
+while fewer than two Recipes have confirmed insights no run can start, so they stay until one can.
+Approve and Dismiss answer 409 `PATTERNS_RUNNING` while any run is `running` (checked inside
+the answer's transaction), so no dismissal is deleted by a run that was not told it.
+The run rows stay, so the since-count and an approved insight's `pattern_run_id` still resolve.
+Anything raising after the model has answered closes the run as `failed`; a proposal whose text
+is empty after collapsing whitespace is refused by the output model itself.
+**Who may approve: a person.** `PatternProposalsRepository.approve` (`POST
+/api/knowledge/patterns/proposals/{id}/approve`) is one transaction: it checks each source is
+still a confirmed insight of its Recipe and its Recipe still matches the scope (else the source is
+skipped and named), refuses with 409 `PATTERN_TOO_FEW_RECIPES` below two Recipes, writes the general
+insight confirmed with `knowledge_insights.pattern_run_id`, and deletes the sources and any
+replaced general insight through `delete_in_transaction`. Dismiss is the other route. No tool,
+timer, boot step or task reaches the service or the proposals' repository:
+`tests/patterns/test_only_a_person_decides.py` walks the registry and the bytecode of every
+module.
+
+**A proposal stops waiting when the Recipe moves on.** Every path that appends a
+version — the Add a version form, a profile draft put on the machine for the Recipe, and
+accepting a proposal itself — goes through
+`RecipesRepository._insert_version` (or, on a Recipe being designed, the fill of its
+version 1), and that is where a waiting proposal of the same Recipe is marked
+`stale`, in the same transaction, with the proposal being accepted as the one
+exception. A revert (`BoardService.revert_recipe`, which writes no Recipe version: it makes that version's profile version the profile's active one) does the same. A retired initial version takes its unsent profile draft with it. The alternative was describing that state rather
+than removing it: a row still saying `proposed` tells the next conversation's
+opening context that the Recipe is somewhere it is not, and leaves the person an
+Accept button whose only possible answer is a 409. The staleness check inside
+`accept` stays as the defence for the race the retirement cannot see.
+
+**Whatever `create` accepted, `accept` can apply.** Every reference a proposal
+names — the profile version, the compared-to version, the conversation it was
+argued in — is checked when the proposal is made, not when somebody presses the
+button. A dangling id discovered at Accept is a 500 on a person's click, and a
+proposal that then sits there blocking every other one until it is declined.
+
+A separate table rather than a status column on `recipe_versions`, for two reasons.
+A version is a thing that was brewed and it must not have a lifecycle in which
+it did not exist yet: every query that averages, groups or charts versions would
+then owe a filter, and the one that forgot it would quietly count a suggestion
+nobody accepted. And the proposal carries what only a proposal has — the chat it
+came from, the version it was made against, whether two changes had to move
+together, the note a decline left — none of which belongs on the version.
+
+The two decisions are routes and nothing else. No tool in the registry reaches
+them, in the chat or over the stdio MCP server, and
+`tests/tools/test_no_proposal_is_accepted_by_a_tool.py` asserts it twice: no
+registered tool is named for either, and no bytecode in the tool package refers
+to either method. An agent that could accept its own proposal would have exactly
+the power the proposal was invented to take away.
+
+**What a conversation can reach is one function, and three things read it.**
+A chat is either about one version of one Recipe or about the archive, and
+`tools/scope.py` maps that kind to the tools that exist and what each may
+touch. The function-calling schemas the runner sends a provider, the audited
+dispatcher that decides whether a call runs, and the stdio MCP server the
+`claude_code` provider spawns all take their list from it — the last of those
+through its environment, because that provider's tool loop runs inside the CLI,
+out of the dispatcher's reach. A tool outside the scope is not described and is
+refused if called anyway, as an error value the model can read; a refusal about
+another Recipe's shot says nothing about whether it exists. There is no second list
+anywhere, the web included: the page shows what the server says the
+conversation has.
+
+**A shot reaches a model in two tiers, from one catalogue.** Every item a shot
+carries — the checks (the signature's state, the warnings), each diagnostic as a number (no band, no score), each
+phase's metrics, each curve channel, the person's judgement, what the person confirmed of the
+shot's newest finished review, minus the claims they rejected — is one entry in
+`shotinfo/catalogue.py` with a stable key, what it means, a default tier, the
+function that renders it, a structured accessor (`{value, unit, phase, window,
+method, source}`) and a method id (`shotinfo/methods.py`) that names the
+computation, so a changed computation is never compared with the old one as the
+same field. `GET /api/shots/{id}/fields` serves a shot's fields in catalogue
+order, grouped by phase, with the Curve check (the ordered checks and the badge) and the review block, and what depends on where the shot is
+filed (`shotinfo/fields.py`). **Base** is what the model sees without asking: every
+shot in a Recipe conversation's opening context (the version's newest
+`chatRecentShots`), every result of the shot search (`list_recipe_shots`), and
+`get_shot`. **Extended** is what it asks for (`get_shot_extended`;
+`get_shot_full` and `compare_shots` are both). A curve is written as one table
+of about `chatCurvePoints` rows (`shotinfo/downsample.py`): every sample the
+diagnostics are about, found by the engine's own rules, then
+largest-triangle-three-buckets on pressure, puck flow and (when the shot had a
+scale) cup flow for the shape, the same timestamps for every channel. Cup flow is
+the scale's `vf` read at zero where it is below (`domain/cup_flow.py`, the one place
+an analysis reads it); a shot has a scale when any brew-phase weight is above zero,
+and without one no cup number exists. The cup first drip is the first sample whose
+weight is half a gram above the first reading, and it is the first drip the curve keeps. One renderer writes all of them,
+so a number the model quotes from the search is the number `get_shot` gives,
+and a value the machine did not record is left out rather than written as
+zero. The tiers are the catalogue's defaults with the person's choices laid
+over them (`shot_info_tiers` holds only the items moved, from Settings → Shot
+information), read once per turn through `effective_tiers`, by the runner and
+the stdio server alike, so a change applies from the next turn. The glossary
+is generated from the same entries — every item that is not excluded, with its tier
+and its meaning — so an item and its explanation cannot drift apart. It is rendered in two halves: the base half is
+in the Recipe and General prompts, and the extended half is attached ahead of a shot
+read in detail (a `field_meanings` field before the shot text of a
+`get_shot_extended`, `get_shot_full` or `compare_shots` result). The rule: the extended meanings are in what the model is sent exactly once whenever an extended result is: on the newest one replayed in the history, or on this answer's first extended read when the history has none. On
+the first extended read of an answer whose history has none, the tool attaches it,
+and "once" is tracked per run in a `RunNotes` holder on the tool context (the
+runner's run state for the API providers, the stdio server's process, one per run,
+for `claude_code`). The runner's result cap counts the text of the tool, not the
+meanings. Otherwise the replayed history strips every stored copy and places a freshly
+rendered one (the bytes a tool would attach) on the newest successful
+`get_shot_extended`, `get_shot_full` or `compare_shots` result among the messages the
+budget keeps (recognised by the stored tool name, sized again with the copy in
+place), and when it places one the run attaches none: the runner marks the run's
+`RunNotes` as sent, and `claude_code` is told at spawn through
+`GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT=1`. The stored rows keep what was sent at the time.
+A shot's review reads the same renderer with a fixed layout of its own: every
+item but the judgement, the machine's note, the label and counted state, and the
+Review group (an earlier review), whatever the person's tiers say — the tiers
+govern what a chat is handed, never what a review reads. The Recipe version's numbers
+stays in, since the checks measure against it.
+
+**Nothing rejected teaches the chat, and the summary never does.** The Review group
+(`review_state`, `review_claims`, `review_prediction`, all base) serves the newest finished
+review's claims **unless a person rejected them**, one line each (the window with its seconds,
+the fault word, the sentence, then the evidence sentences with their values; a free-text
+expectation's answer says which expectation, and whether it held or failed), the stance on the
+Recipe version's prediction, and the counts (kept, rejected). A claim is written `confirmed` and a
+person can only reject it or restore it; there is no waiting state. The review's summary is never
+served. One filter does it for every surface that reads claims (`shotinfo/catalogue.py::_kept`, so
+the shot tools, the Recipe chat's context and the design chat's all agree), and `v_review_claims`
+filters to `status <> 'rejected'` of the newest finished review in the view itself, so a query
+cannot read what a person rejected.
+
+**A shot serves two blocks, and a review never moves the first.** `checks: {badge, entries, state}`
+is the Curve check (`state` is `entries`, `pass` or `unchecked`, from `ShotChecks.verdict`): the
+signature in force's failed critical and important expectations and the universal warnings, worked
+out when the shot is read (`signatures/checks.py`); a free-text expectation is in the list as
+"checked by the review", never merged into it. `review: {state,
+badge, entries, verdict, summary, reason, review_id, in_force_id}` is what the model wrote
+(`review/reading.py::serve_review`, which the shots list, the detail and the fields route all
+use): its entries are built by code from the claims a person did not reject and whose numbers bear them out (an unsupported claim stays in the box and in the chat, not in the badge). **The review in
+force is the shot's newest finished review, for every viewer**: a newer one that is running,
+failed or interrupted changes only the review badge's words and the sort bucket, and replaces
+nothing until it finishes `ok`. `in_force_id` is that review's id (null with none), the id a
+claim is answered through, while `review_id` is the newest attempt's. `?sort=check` and
+`?sort=review` are each column's own total key (the order the column shows), paged by offset.
+
+**A Recipe being designed is the third surface.** A Recipe created by the design
+route has a version 1 with no numbers and a `designing` flag, and while the flag
+is up its conversation has neither kind's tools: nothing reads shots (there are
+none) and nothing changes the numbers (there are none). It has the Recipe, the profile
+library and any profile's whole document, the knowledge tiers, and
+`propose_initial_recipe`, which proposes the whole first version as one card.
+Its profile starts from the one the person picked to fork, or from nothing: the
+tool takes no base from the model, and with no fork the document is written
+whole (the draft is marked new and shown as a profile, never as a diff against
+a profile the person brews). The library is not listed in the design context
+for the same reason.
+`ToolScope.resolve` reads the flag from the Recipe at the start of every turn, for
+the runner and the stdio server alike, so the turn after the card is accepted is
+an ordinary Recipe conversation in the same thread. The flag is never inferred: a
+hand-made Recipe whose version 1 names no profile looks the same and is not being
+designed. Accepting the card, or any other version write to the Recipe, fills
+version 1 in place rather than appending a v2 — `RecipesRepository.append_version`
+decides it, so no path can miss it — and retires a waiting card with its draft.
+
+**Why the design context may show other Recipes.** A Recipe's conversation sees its
+Recipe and nothing else; the design conversation is the one exception, and a narrow
+one. Designing a version for a coffee you have brewed before is exactly when how
+it went elsewhere matters, so the opening context carries this bean's other Recipes
+still in use and similar Recipes on this grinder, capped and in a fixed order. It
+is a read-only snapshot assembled on the server: no tool in the design scope
+browses another Recipe, and the block is gone the moment version 1 is filled.
+
+**What can reach the machine is two closed lists, enforced by a test.** Ten
+reads, and seven writes behind a switch that is off by default: five profile
+operations, and the flush and the brew/standby switch a person presses in the top bar. **And what may be written is a rule too**: only profiles are
+ever written to the machine — no shot delete, no notes write-back — and nothing starts
+one but the board sync at the end of a sync, with the switch on
+(`/api/profile-board`: the list is edited by a person (on or off the machine, starred, which
+version is active, a conflict's side, one click to make a proposal active) and written by the sync; no timer, no machine event, no judgement save, no push or rollback route
+and no tool a model calls starts a write). See [`safety-layers.md`](safety-layers.md).
+
+## What runs where, in detail
+
+* **In the lifespan, before any request**: the configuration check (which
+  refuses to start while a retired credential variable is set), the schema check, prompt
+  and rule seeding, boot reconciliation, then the services, then the background
+  tasks. Shutdown is the reverse, and it cancels the task registry
+  before closing the database so nothing is mid-write when the file is released.

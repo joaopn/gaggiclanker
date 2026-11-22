@@ -1,9 +1,37 @@
 ---
-title: "Device safety: what can harm the machine, and the four layers"
+title: Machine safety
+parent: Architecture
+nav_order: 6
 ---
-# Device safety: what can harm the machine, and the four layers
+# Machine safety
 
 Verified against the GaggiMate firmware source.
+
+gaggiclanker writes exactly one kind of thing to the machine's storage, a **profile**, and only while a person has the **Writes** switch on. It never deletes a shot, never writes a notes card, never changes a machine setting. This is a property of the code, enforced by a test, not a convention.
+
+## Everything that can reach the machine
+
+```mermaid
+flowchart TB
+  subgraph Reads["Ten reads (always allowed)"]
+    R["list and load profiles, shot notes, OTA settings,<br/>index, recent shots, .slog files, notes JSON,<br/>status, settings"]
+  end
+  subgraph Gate["Seven writes, behind deviceWritesEnabled (off by default)"]
+    PW["Five profile operations:<br/>save, delete, select, favourite, unfavourite"]
+    FL["start_flush"]
+    MO["change_mode (brew / standby)"]
+  end
+  SYNC["Board write phase<br/>at the end of a sync"] --> PW
+  FB["Top bar: Flush"] --> FL
+  MB["Top bar: Switch to Brew / Standby"] --> MO
+  AGENT["Any agent or model tool"] -. "no path" .-x Gate
+```
+
+| Write | Started by | Recorded |
+|---|---|---|
+| The five profile operations | Only the board write phase at the end of a sync, with the switch on | Every attempt, refused ones included, is a `device_writes` row listed under **Recent writes** on the Device page |
+| Flush | A person's click on **Flush**, shown only with the switch on; refused unless the machine is in brew mode with nothing running | Not recorded: it stores nothing |
+| Mode switch | A person's click on **Switch to Brew / Standby**, shown only with the switch on; refused while a shot or flush runs (the firmware would end it) or the machine is not ready; waits for the state frame that confirms it | Not recorded: it stores nothing |
 
 **gaggiclanker writes exactly five things to a machine's storage, all of them profile
 operations, and only when a person has switched writes on.** Save, delete,
@@ -266,6 +294,15 @@ to everything entering the database too. `scripts/profile_gate.py` runs all four
 over a profile file from a shell, which is the cheapest way to check a
 hand-written one before it goes anywhere near a machine.
 
+```mermaid
+flowchart LR
+  D["Profile document"] --> L1["1. Schema<br/>strict pydantic,<br/>mirrors the firmware's"]
+  L1 --> L2["2. Safety policy<br/>narrower than the firmware"]
+  L2 --> L3["3. Round trip<br/>save, read back, compare"]
+  L3 --> M["Machine"]
+  L4["4. Simulator gate<br/>the real firmware, built natively"] -. "checks layers 1–3 in CI" .-> L3
+```
+
 **1. Schema validity — pydantic, strict.**
 A `Profile` model mirroring the firmware's own `schema/profile.json`:
 `extra="forbid"` except underscore-prefixed annotation keys and the undocumented
@@ -383,6 +420,8 @@ and it is not the machine's selected profile with nothing to take the selection 
 moves to the first profile that is on, first). The firmware clears its startup-profile setting
 when that profile is deleted (`ProfileManager::deleteProfile`) and this app never writes
 settings, so the primitive reports when that happened.
+
+**Accepted residue.** A shot that starts during the save itself, or one that ends while the connection is down between the pull and the save, can be linked to the wrong version. No announcement reaches the app in either case.
 
 **4. A simulator gate in CI.**
 `tests/simulator/test_profile_push.py`: every profile fixture is saved to the
