@@ -1,3 +1,6 @@
+---
+title: Getting started
+---
 # Getting started
 
 A self-hosted archive and analyst for a [GaggiMate](https://gaggimate.eu)

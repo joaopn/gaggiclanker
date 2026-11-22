@@ -1,3 +1,6 @@
+---
+title: Profiles and the machine
+---
 # Profiles and the machine
 
 ## What gaggiclanker writes to the machine, and who starts it

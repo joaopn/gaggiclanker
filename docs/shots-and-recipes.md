@@ -1,3 +1,6 @@
+---
+title: Shots and Recipes
+---
 # Shots and Recipes
 
 ## The pages

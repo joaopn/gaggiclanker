@@ -1,3 +1,6 @@
+---
+title: Device gotchas
+---
 # Device gotchas
 
 Fifteen firmware behaviours that shaped the sync engine. Every one of them was

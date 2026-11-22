@@ -1,3 +1,6 @@
+---
+title: Troubleshooting
+---
 # Troubleshooting
 
 **The device pill never goes green.**

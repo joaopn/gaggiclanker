@@ -1,3 +1,6 @@
+---
+title: "Device safety: what can harm the machine, and the four layers"
+---
 # Device safety: what can harm the machine, and the four layers
 
 Verified against the GaggiMate firmware source.

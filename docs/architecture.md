@@ -1,3 +1,6 @@
+---
+title: Architecture
+---
 # Architecture
 
 One process. A FastAPI app on uvicorn serving a React bundle from the same

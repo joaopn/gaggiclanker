@@ -1,3 +1,6 @@
+---
+title: Configuration
+---
 # Configuration
 
 The Settings pages are where everything is configured; the one setting that
